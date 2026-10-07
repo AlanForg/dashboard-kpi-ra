@@ -1456,118 +1456,103 @@ function downloadBlob(content, filename, mimeType) {
   URL.revokeObjectURL(url);
 }
 
-/* ===== AUTO-LOAD FROM GOOGLE SHEETS ===== */
-var SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1Ho7c6K0ijAaHOQRwyi2WQZd3MsuQeE5QrJOjoqMpSSg/gviz/tq?tqx=out:csv&gid=87252591';
+/* ===== AUTO-LOAD FROM GOOGLE SHEETS (JSONP - no CORS) ===== */
+var SHEET_ID = '1Ho7c6K0ijAaHOQRwyi2WQZd3MsuQeE5QrJOjoqMpSSg';
+var SHEET_GID = '87252591';
 
 function loadFromSheet() {
   var statusEl = document.getElementById('sheet-status');
-  if (statusEl) statusEl.textContent = 'Carregando dados da planilha...';
+  if (statusEl) { statusEl.textContent = 'Carregando da planilha...'; statusEl.style.color = '#93c5fd'; }
 
-  var xhr = new XMLHttpRequest();
-  xhr.open('GET', SHEET_CSV_URL, true);
-  xhr.onload = function() {
-    if (xhr.status === 200) {
-      var csvText = xhr.responseText;
-      var parsed = parseCSVToData(csvText);
-      if (parsed && parsed.length > 0) {
-        DATA = parsed;
-        filtered = DATA.slice();
-        populateFilters();
-        renderAll();
-        if (statusEl) statusEl.textContent = 'Atualizado da planilha: ' + DATA.length + ' registros (' + new Date().toLocaleTimeString('pt-BR') + ')';
-        if (statusEl) statusEl.style.color = '#059669';
+  var callbackName = 'sheetCallback_' + Date.now();
+  var url = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=responseHandler:' + callbackName + '&gid=' + SHEET_GID;
+
+  window[callbackName] = function(response) {
+    try {
+      if (response && response.table && response.table.rows) {
+        var table = response.table;
+        var cols = table.cols;
+        var rows = table.rows;
+
+        /* Map column labels to our keys */
+        var HMAP = {
+          'Data Reclamacao':'d','Data Reclamação':'d',
+          'Status Hugme':'sh','Status HugMe':'sh',
+          'Status RA':'sr','Nome':'nm','Cidade':'c','Estado':'e','Tags':'t',
+          'Data de Resposta':'dr','Interações neste ticket':'i','Interacoes neste ticket':'i',
+          'Seu problema foi resolvido?':'rv','Voltaria a fazer negócio?':'vn','Voltaria a fazer negocio?':'vn',
+          'Nota':'n','Tempo 1ª Resp. (público)':'tp','Tempo 1ª Resp. (publico)':'tp',
+          'Atribuído Para':'ag','Atribuido Para':'ag',
+          'Avaliação Favorável':'af','Avaliacao Favoravel':'af',
+          'Data Consideração Consumidor':'dc','Data Consideracao Consumidor':'dc',
+          'Consideração Consumidor':'cc','Consideracao Consumidor':'cc',
+          'Semana Criação':'sem','Semana Criacao':'sem',
+          'Dia da Semana':'ds','Mês/Ano':'ma','Mes/Ano':'ma',
+          'Motivo Consolidado':'mt','Respondido?':'rp',
+          'Horas Sem Resposta':'hp','Dias p/ Responder':'dp','Faixa Resposta':'fx'
+        };
+
+        var colMap = {};
+        for (var ci = 0; ci < cols.length; ci++) {
+          var label = cols[ci].label || '';
+          if (HMAP[label]) colMap[ci] = HMAP[label];
+        }
+
+        if (Object.keys(colMap).length < 5) {
+          if (statusEl) { statusEl.textContent = 'Colunas nao reconhecidas. Base embutida (' + DATA.length + ').'; statusEl.style.color = '#d97706'; }
+          return;
+        }
+
+        var result = [];
+        for (var ri = 0; ri < rows.length; ri++) {
+          var cells = rows[ri].c;
+          if (!cells) continue;
+          var rec = {d:'',sh:'',sr:'',nm:'',c:'',e:'',t:'',dr:'',i:'',rv:'',vn:'',n:'',tp:'',ag:'',dc:'',cc:'',sem:'',ds:'',ma:'',mt:'',rp:'',hp:'',dp:'',fx:'',af:''};
+          for (var k in colMap) {
+            if (colMap.hasOwnProperty(k)) {
+              var idx = parseInt(k);
+              var cell = (idx < cells.length && cells[idx]) ? cells[idx] : null;
+              if (cell) {
+                rec[colMap[k]] = cell.f || (cell.v !== null && cell.v !== undefined ? String(cell.v) : '');
+              }
+            }
+          }
+          if (rec.d) result.push(rec);
+        }
+
+        if (result.length > 0) {
+          DATA = result;
+          filtered = DATA.slice();
+          populateFilters();
+          renderAll();
+          if (statusEl) { statusEl.textContent = 'Atualizado: ' + DATA.length + ' registros (' + new Date().toLocaleTimeString('pt-BR') + ')'; statusEl.style.color = '#059669'; }
+        } else {
+          if (statusEl) { statusEl.textContent = 'Sem dados na planilha. Base embutida (' + DATA.length + ').'; statusEl.style.color = '#d97706'; }
+        }
       } else {
-        if (statusEl) statusEl.textContent = 'Erro ao interpretar dados. Usando base embutida.';
-        if (statusEl) statusEl.style.color = '#d97706';
+        if (statusEl) { statusEl.textContent = 'Resposta invalida. Base embutida (' + DATA.length + ').'; statusEl.style.color = '#d97706'; }
       }
-    } else {
-      if (statusEl) statusEl.textContent = 'Planilha nao acessivel (' + xhr.status + '). Usando base embutida.';
-      if (statusEl) statusEl.style.color = '#d97706';
+    } catch (e) {
+      console.error('Sheet parse error:', e);
+      if (statusEl) { statusEl.textContent = 'Erro ao processar: ' + e.message + '. Base embutida.'; statusEl.style.color = '#d97706'; }
     }
-  };
-  xhr.onerror = function() {
-    if (statusEl) statusEl.textContent = 'Erro de rede. Usando base embutida com ' + DATA.length + ' registros.';
-    if (statusEl) statusEl.style.color = '#d97706';
-  };
-  xhr.send();
-}
-
-function parseCSVToData(csvText) {
-  var lines = csvText.split('\n');
-  if (lines.length < 2) return null;
-
-  /* Parse header row */
-  var headers = parseCSVLine(lines[0]);
-  var HMAP = {
-    'Data Reclamacao':'d','Data Reclamação':'d',
-    'Status Hugme':'sh','Status HugMe':'sh',
-    'Status RA':'sr','Nome':'nm','Cidade':'c','Estado':'e','Tags':'t',
-    'Data de Resposta':'dr','Interacoes neste ticket':'i','Interações neste ticket':'i',
-    'Seu problema foi resolvido?':'rv','Voltaria a fazer negocio?':'vn','Voltaria a fazer negócio?':'vn',
-    'Nota':'n','Tempo 1ª Resp. (publico)':'tp','Tempo 1ª Resp. (público)':'tp',
-    'Atribuido Para':'ag','Atribuído Para':'ag',
-    'Avaliacao Favoravel':'af','Avaliação Favorável':'af',
-    'Data Consideracao Consumidor':'dc','Data Consideração Consumidor':'dc',
-    'Consideracao Consumidor':'cc','Consideração Consumidor':'cc',
-    'Semana Criacao':'sem','Semana Criação':'sem',
-    'Dia da Semana':'ds','Mes/Ano':'ma','Mês/Ano':'ma',
-    'Motivo Consolidado':'mt','Respondido?':'rp',
-    'Horas Sem Resposta':'hp','Dias p/ Responder':'dp','Faixa Resposta':'fx'
+    /* Cleanup */
+    delete window[callbackName];
+    var scriptEl = document.getElementById('sheet-loader');
+    if (scriptEl) scriptEl.parentNode.removeChild(scriptEl);
   };
 
-  var colMap = {};
-  for (var ci = 0; ci < headers.length; ci++) {
-    var h = headers[ci].replace(/^"|"$/g, '').trim();
-    if (HMAP[h]) colMap[ci] = HMAP[h];
-  }
-
-  var mapped = Object.keys(colMap).length;
-  if (mapped < 5) return null;
-
-  var result = [];
-  for (var li = 1; li < lines.length; li++) {
-    if (!lines[li].trim()) continue;
-    var cols = parseCSVLine(lines[li]);
-    var rec = {d:'',sh:'',sr:'',nm:'',c:'',e:'',t:'',dr:'',i:'',rv:'',vn:'',n:'',tp:'',ag:'',dc:'',cc:'',sem:'',ds:'',ma:'',mt:'',rp:'',hp:'',dp:'',fx:'',af:''};
-    for (var k in colMap) {
-      if (colMap.hasOwnProperty(k)) {
-        var idx = parseInt(k);
-        rec[colMap[k]] = (idx < cols.length) ? cols[idx].replace(/^"|"$/g, '').trim() : '';
-      }
-    }
-    if (rec.d) result.push(rec);
-  }
-  return result;
-}
-
-function parseCSVLine(line) {
-  var result = [];
-  var current = '';
-  var inQuotes = false;
-  for (var i = 0; i < line.length; i++) {
-    var ch = line[i];
-    if (inQuotes) {
-      if (ch === '"' && i + 1 < line.length && line[i+1] === '"') {
-        current += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuotes = false;
-      } else {
-        current += ch;
-      }
-    } else {
-      if (ch === '"') {
-        inQuotes = true;
-      } else if (ch === ',') {
-        result.push(current);
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-  }
-  result.push(current);
-  return result;
+  /* Load via script tag (JSONP - bypasses CORS) */
+  var oldScript = document.getElementById('sheet-loader');
+  if (oldScript) oldScript.parentNode.removeChild(oldScript);
+  var script = document.createElement('script');
+  script.id = 'sheet-loader';
+  script.src = url;
+  script.onerror = function() {
+    if (statusEl) { statusEl.textContent = 'Planilha nao acessivel. Base embutida (' + DATA.length + ' registros).'; statusEl.style.color = '#d97706'; }
+    delete window[callbackName];
+  };
+  document.body.appendChild(script);
 }
 
 /* ===== INIT ===== */
