@@ -100,6 +100,8 @@ tr:hover{background:#e8f0fe}
 <div class="header">
   <h1>Dashboard KPI &mdash; Reclama&ccedil;&otilde;es RA</h1>
   <button class="btn-freeze" onclick="doFreeze()">&#128274; Congelar</button>
+  <button onclick="loadFromSheet()" style="padding:6px 12px;background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;cursor:pointer;font-size:11px">&#128260; Atualizar da Planilha</button>
+  <span id="sheet-status" style="font-size:10px;color:#93c5fd;max-width:200px;display:inline-block"></span>
   <button class="btn-export" onclick="exportFrozenHTML()" title="Exportar HTML">HTML</button>
   <button class="btn-export" onclick="exportFrozenCSV()" title="Exportar CSV">CSV</button>
   <button class="btn-export" onclick="exportFrozenPDF()" title="Exportar PDF">PDF</button>
@@ -129,14 +131,16 @@ tr:hover{background:#e8f0fe}
 
 <!-- TAB NAV -->
 <div class="tab-nav">
-  <button class="tab-btn active" onclick="switchTab('analise')">An&aacute;lise RA</button>
-  <button class="tab-btn" onclick="switchTab('tempo')">Tempo de Resposta</button>
-  <button class="tab-btn" onclick="switchTab('prod')">Produtividade</button>
-  <button class="tab-btn" onclick="switchTab('csat')">CSAT</button>
-  <button class="tab-btn" onclick="switchTab('consid')">Considera&ccedil;&otilde;es</button>
-  <button class="tab-btn" onclick="switchTab('duplic')">Duplicidade</button>
-  <button class="tab-btn" onclick="switchTab('base')">Base</button>
-  <button class="tab-btn" onclick="switchTab('premissas')">Premissas</button>
+  <button class="tab-btn active" onclick="switchTab('analise')">&#128203; An&aacute;lise RA</button>
+  <button class="tab-btn" onclick="switchTab('tempo')">&#9201; Tempo</button>
+  <button class="tab-btn" onclick="switchTab('prod')">&#128105; Produtividade</button>
+  <button class="tab-btn" onclick="switchTab('csat')">&#11088; CSAT</button>
+  <button class="tab-btn" onclick="switchTab('consid')">&#128172; Considera&ccedil;&otilde;es</button>
+  <button class="tab-btn" onclick="switchTab('tabela')">&#128196; Tabela</button>
+  <button class="tab-btn" onclick="switchTab('periodo')">&#128197; Mensal/Semanal/Di&aacute;rio</button>
+  <button class="tab-btn" onclick="switchTab('duplic')">&#128260; Duplicidade</button>
+  <button class="tab-btn" onclick="switchTab('base')">&#128221; Base</button>
+  <button class="tab-btn" onclick="switchTab('premissas')">&#128208; Premissas</button>
 </div>
 
 <!-- TAB CONTENTS -->
@@ -145,6 +149,8 @@ tr:hover{background:#e8f0fe}
 <div id="tab-prod" class="tab-content"></div>
 <div id="tab-csat" class="tab-content"></div>
 <div id="tab-consid" class="tab-content"></div>
+<div id="tab-tabela" class="tab-content"></div>
+<div id="tab-periodo" class="tab-content"></div>
 <div id="tab-duplic" class="tab-content"></div>
 <div id="tab-base" class="tab-content"></div>
 <div id="tab-premissas" class="tab-content"></div>
@@ -242,6 +248,7 @@ function makeKPIRow(items) {
        + '<div class="kpi-value">' + items[i].v + '</div>'
        + '<div class="kpi-label">' + items[i].l + '</div>'
        + (items[i].s ? '<div class="kpi-sub">' + items[i].s + '</div>' : '')
+       + (items[i].sub ? '<div class="kpi-sub" style="color:#2563eb;font-weight:600">' + items[i].sub + '</div>' : '')
        + '</div>';
   }
   h += '</div>';
@@ -420,6 +427,11 @@ function renderAnalise() {
   }
   var notaMedia = cntNotas > 0 ? (somaNotas / cntNotas) : 0;
   var nps = cntNotas > 0 ? ((promotores - detratores) / cntNotas * 100) : 0;
+  var afEnviado = 0, afAguardando = 0;
+  for (var af = 0; af < d.length; af++) {
+    if (d[af].af === 'Enviado') afEnviado++;
+    if (d[af].af === 'Aguardando') afAguardando++;
+  }
 
   var h = makeKPIRow([
     {v: fmtNum(total), l: 'Total Tickets'},
@@ -427,7 +439,8 @@ function renderAnalise() {
     {v: fmtNum(semResp), l: 'Sem Resposta', s: total > 0 ? fmtPct(semResp/total*100) : '0%'},
     {v: fmtNum(avaliados), l: 'Avaliados'},
     {v: notaMedia.toFixed(1), l: 'Nota Média'},
-    {v: nps.toFixed(0), l: 'NPS'}
+    {v: nps.toFixed(0), l: 'NPS'},
+    {v: fmtNum(afEnviado), l: 'Aval. Favorável Enviadas', sub: 'Aguardando: ' + afAguardando}
   ]);
 
   h += '<div class="nps-detail">Promotores(≥9): <b>' + promotores + '</b> | Neutros(7-8): <b>' + neutros + '</b> | Detratores(&lt;7): <b>' + detratores + '</b></div>';
@@ -478,13 +491,18 @@ function renderTempo() {
     if (fx === 'PENDENTE') pendentes++;
   }
   var tempoMedio = avg(dias);
+  var totalT = d.length;
+  var pctMD = totalT > 0 ? (mesmoDia/totalT*100).toFixed(1) + '%' : '0%';
+  var pctA3 = totalT > 0 ? (ate3/totalT*100).toFixed(1) + '%' : '0%';
+  var pctM3 = totalT > 0 ? (maior3/totalT*100).toFixed(1) + '%' : '0%';
+  var pctPn = totalT > 0 ? (pendentes/totalT*100).toFixed(1) + '%' : '0%';
 
   var h = makeKPIRow([
     {v: tempoMedio.toFixed(1), l: 'Tempo Médio (dias)'},
-    {v: fmtNum(mesmoDia), l: 'Mesmo Dia'},
-    {v: fmtNum(ate3), l: '≤3 Dias'},
-    {v: fmtNum(maior3), l: '>3 Dias'},
-    {v: fmtNum(pendentes), l: 'Pendentes'}
+    {v: fmtNum(mesmoDia), l: 'Mesmo Dia', sub: pctMD},
+    {v: fmtNum(ate3), l: '≤3 Dias', sub: pctA3},
+    {v: fmtNum(maior3), l: '>3 Dias', sub: pctM3},
+    {v: fmtNum(pendentes), l: 'Pendentes', sub: pctPn}
   ]);
 
   /* Faixas de Resposta */
@@ -857,8 +875,10 @@ function renderConsid() {
 
   /* Table with all cc records */
   var ccRows = [];
+  var ccTexts = [];
   for (var i = 0; i < withCC.length; i++) {
     var r = withCC[i];
+    ccTexts.push(r.cc);
     ccRows.push([
       escHtml(r.d ? r.d.split(' ')[0] : ''),
       escHtml(r.nm),
@@ -868,8 +888,58 @@ function renderConsid() {
       '<div class="cc-text">' + escHtml(r.cc) + '</div>'
     ]);
   }
-  h += '<div class="chart-section"><h3>Considerações dos Consumidores (' + totalCC + ')</h3>';
-  h += makeTableHTML(['Data','Nome','Motivo','Nota','Avaliação','Consideração'], ccRows, 200);
+  h += '<div class="chart-section"><h3>Consideracoes dos Consumidores (' + totalCC + ')</h3>';
+  h += makeTableHTML(['Data','Nome','Motivo','Nota','Avaliacao','Consideracao'], ccRows, 200);
+  h += '</div>';
+
+  // WORD CLOUDS
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">';
+
+  // Positive word cloud
+  h += '<div class="card" style="padding:16px"><h3 style="color:#0ca30c;margin:0 0 10px">&#9989; Nuvem de Palavras Positivas</h3>';
+  h += '<div style="text-align:center;line-height:2.2;padding:10px">';
+  var posWords = ['resolveu','otimo','bom','excelente','rapido','obrigado','obrigada','atencioso','satisfeito','perfeito','parabes','eficiente','agradecimento','atencao','resolvido'];
+  var posCount = {};
+  for (var pw = 0; pw < posWords.length; pw++) posCount[posWords[pw]] = 0;
+  for (var pc = 0; pc < ccTexts.length; pc++) {
+    var lower = ccTexts[pc].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    for (var pw2 = 0; pw2 < posWords.length; pw2++) {
+      if (lower.indexOf(posWords[pw2]) >= 0) posCount[posWords[pw2]]++;
+    }
+  }
+  var posArr = [];
+  for (var pk in posCount) { if (posCount[pk] > 0) posArr.push([pk, posCount[pk]]); }
+  posArr.sort(function(a,b){return b[1]-a[1];});
+  var posMax = posArr.length ? posArr[0][1] : 1;
+  for (var pi = 0; pi < posArr.length; pi++) {
+    var sz = Math.max(12, Math.min(36, Math.round(posArr[pi][1] / posMax * 36)));
+    h += '<span style="display:inline-block;margin:3px 6px;font-size:' + sz + 'px;font-weight:700;color:#0ca30c;opacity:' + (0.5 + posArr[pi][1]/posMax*0.5).toFixed(2) + '" title="' + posArr[pi][0] + ': ' + posArr[pi][1] + '">' + posArr[pi][0] + ' <sup style="font-size:10px;color:#666">' + posArr[pi][1] + '</sup></span>';
+  }
+  if (!posArr.length) h += '<span style="color:#999">Sem palavras positivas encontradas</span>';
+  h += '</div></div>';
+
+  // Negative word cloud
+  h += '<div class="card" style="padding:16px"><h3 style="color:#d03b3b;margin:0 0 10px">&#10060; Nuvem de Palavras Negativas</h3>';
+  h += '<div style="text-align:center;line-height:2.2;padding:10px">';
+  var negWords = ['nao resolvido','nada','ruim','pessimo','demora','demorado','absurdo','horrivel','nunca','pior','insatisfeito','descaso','robotizado','mentira','esperar','ignorou','falta','desconsiderou'];
+  var negCount = {};
+  for (var nw = 0; nw < negWords.length; nw++) negCount[negWords[nw]] = 0;
+  for (var nc = 0; nc < ccTexts.length; nc++) {
+    var lower2 = ccTexts[nc].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    for (var nw2 = 0; nw2 < negWords.length; nw2++) {
+      if (lower2.indexOf(negWords[nw2]) >= 0) negCount[negWords[nw2]]++;
+    }
+  }
+  var negArr = [];
+  for (var nk in negCount) { if (negCount[nk] > 0) negArr.push([nk, negCount[nk]]); }
+  negArr.sort(function(a,b){return b[1]-a[1];});
+  var negMax = negArr.length ? negArr[0][1] : 1;
+  for (var ni = 0; ni < negArr.length; ni++) {
+    var nsz = Math.max(12, Math.min(36, Math.round(negArr[ni][1] / negMax * 36)));
+    h += '<span style="display:inline-block;margin:3px 6px;font-size:' + nsz + 'px;font-weight:700;color:#d03b3b;opacity:' + (0.5 + negArr[ni][1]/negMax*0.5).toFixed(2) + '" title="' + negArr[ni][0] + ': ' + negArr[ni][1] + '">' + negArr[ni][0] + ' <sup style="font-size:10px;color:#666">' + negArr[ni][1] + '</sup></span>';
+  }
+  if (!negArr.length) h += '<span style="color:#999">Sem palavras negativas encontradas</span>';
+  h += '</div></div>';
   h += '</div>';
 
   document.getElementById('tab-consid').innerHTML = h;
@@ -1121,12 +1191,118 @@ function renderPremissas() {
 }
 
 /* ===== RENDER ALL ===== */
+function renderTabela() {
+  var el = document.getElementById('tab-tabela');
+  var h = '<h2 style="margin:0 0 12px;font-size:16px">Tabela Detalhada de Tickets</h2>';
+  h += '<div style="overflow:auto;max-height:600px;border:1px solid #e2e8f0;border-radius:8px">';
+  h += '<table class="data-table"><thead><tr>';
+  var cols = [{h:'Data',k:'d'},{h:'Nome',k:'nm'},{h:'St.HugMe',k:'sh'},{h:'St.RA',k:'sr'},{h:'Agente',k:'ag'},{h:'Motivo',k:'mt'},{h:'Estado',k:'e'},{h:'Cidade',k:'c'},{h:'Dias',k:'dp'},{h:'Faixa',k:'fx'},{h:'Nota',k:'n'},{h:'Resolvido?',k:'rv'},{h:'Voltaria?',k:'vn'},{h:'Aval.Fav.',k:'af'},{h:'Tags',k:'t'}];
+  for (var c = 0; c < cols.length; c++) h += '<th>' + cols[c].h + '</th>';
+  h += '</tr></thead><tbody>';
+  for (var i = 0; i < Math.min(filtered.length, 500); i++) {
+    var r = filtered[i];
+    h += '<tr>';
+    for (var c2 = 0; c2 < cols.length; c2++) {
+      var v = r[cols[c2].k] || '';
+      if (cols[c2].k === 'fx' && r.dp && parseInt(r.dp) > 3) v = '<span style="color:#d03b3b;font-weight:700">' + escHtml(v) + '</span>';
+      else if (cols[c2].k === 'fx' && r.dp === '0') v = '<span style="color:#0ca30c;font-weight:700">Mesmo dia</span>';
+      else if (cols[c2].k === 'n' && v) { var nv = parseFloat(v); v = '<span style="color:' + (nv >= 9 ? '#0ca30c' : nv >= 7 ? '#d97706' : '#d03b3b') + ';font-weight:700">' + v + '</span>'; }
+      else v = escHtml(v);
+      h += '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(r[cols[c2].k] || '') + '">' + v + '</td>';
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table></div>';
+  if (filtered.length > 500) h += '<p style="color:#6b7280;font-size:11px;margin-top:8px">Mostrando 500 de ' + filtered.length + ' registros</p>';
+  el.innerHTML = h;
+}
+
+function renderPeriodo() {
+  var el = document.getElementById('tab-periodo');
+  var h = '<h2 style="margin:0 0 16px;font-size:16px">Visao Mensal / Semanal / Diaria</h2>';
+
+  // === MENSAL ===
+  h += '<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">Visao Mensal</span></div><div class="card-body">';
+  var byMonth = {};
+  for (var i = 0; i < filtered.length; i++) {
+    var m = filtered[i].ma || '?';
+    if (!byMonth[m]) byMonth[m] = {t:0,r:0,sr:0,d0:0,gt3:0,ns:[],pend:0};
+    byMonth[m].t++;
+    if (filtered[i].rp === 'Sim') byMonth[m].r++;
+    else byMonth[m].sr++;
+    if (filtered[i].dp === '0') byMonth[m].d0++;
+    if (filtered[i].dp && parseInt(filtered[i].dp) > 3) byMonth[m].gt3++;
+    if (filtered[i].rp === 'Nao' || filtered[i].rp === 'Não') byMonth[m].pend++;
+    if (filtered[i].n && filtered[i].n !== '') byMonth[m].ns.push(parseFloat(filtered[i].n) || 0);
+  }
+  h += '<div style="overflow:auto"><table class="data-table"><thead><tr><th>Mes/Ano</th><th>Total</th><th>Resp.</th><th>S/Resp</th><th>Taxa%</th><th>MsmDia</th><th>&gt;3d</th><th>Pend.</th><th>Nota Med.</th></tr></thead><tbody>';
+  var mKeys = Object.keys(byMonth);
+  for (var mi = 0; mi < mKeys.length; mi++) {
+    var mk = mKeys[mi], mv = byMonth[mk];
+    var taxa = mv.t ? (mv.r / mv.t * 100).toFixed(1) : '0';
+    var avgN = mv.ns.length ? (mv.ns.reduce(function(a,b){return a+b;},0) / mv.ns.length).toFixed(1) : '-';
+    h += '<tr><td><b>' + escHtml(mk) + '</b></td><td>' + mv.t + '</td><td>' + mv.r + '</td><td style="color:#d03b3b">' + mv.sr + '</td><td>' + taxa + '%</td><td style="color:#0ca30c">' + mv.d0 + '</td><td style="color:#d03b3b">' + mv.gt3 + '</td><td style="color:#d97706">' + mv.pend + '</td><td><b>' + avgN + '</b></td></tr>';
+  }
+  h += '</tbody></table></div></div></div>';
+
+  // === SEMANAL ===
+  h += '<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">Visao Semanal</span></div><div class="card-body">';
+  var byWeek = {};
+  for (var j = 0; j < filtered.length; j++) {
+    var w = filtered[j].sem || '?';
+    if (!byWeek[w]) byWeek[w] = {t:0,r:0,sr:0,d0:0,gt3:0,ns:[],pend:0};
+    byWeek[w].t++;
+    if (filtered[j].rp === 'Sim') byWeek[w].r++;
+    else byWeek[w].sr++;
+    if (filtered[j].dp === '0') byWeek[w].d0++;
+    if (filtered[j].dp && parseInt(filtered[j].dp) > 3) byWeek[w].gt3++;
+    if (filtered[j].rp === 'Nao' || filtered[j].rp === 'Não') byWeek[w].pend++;
+    if (filtered[j].n && filtered[j].n !== '') byWeek[w].ns.push(parseFloat(filtered[j].n) || 0);
+  }
+  h += '<div style="overflow:auto"><table class="data-table"><thead><tr><th>Semana</th><th>Total</th><th>Resp.</th><th>S/Resp</th><th>Taxa%</th><th>MsmDia</th><th>&gt;3d</th><th>Pend.</th><th>Nota Med.</th></tr></thead><tbody>';
+  var wKeys = Object.keys(byWeek).sort(function(a,b){return parseInt(a)-parseInt(b);});
+  for (var wi = 0; wi < wKeys.length; wi++) {
+    var wk = wKeys[wi], wv = byWeek[wk];
+    var wTaxa = wv.t ? (wv.r / wv.t * 100).toFixed(1) : '0';
+    var wAvg = wv.ns.length ? (wv.ns.reduce(function(a,b){return a+b;},0) / wv.ns.length).toFixed(1) : '-';
+    h += '<tr><td><b>Sem ' + escHtml(wk) + '</b></td><td>' + wv.t + '</td><td>' + wv.r + '</td><td style="color:#d03b3b">' + wv.sr + '</td><td>' + wTaxa + '%</td><td style="color:#0ca30c">' + wv.d0 + '</td><td style="color:#d03b3b">' + wv.gt3 + '</td><td style="color:#d97706">' + wv.pend + '</td><td><b>' + wAvg + '</b></td></tr>';
+  }
+  h += '</tbody></table></div></div></div>';
+
+  // === DIARIO ===
+  h += '<div class="card"><div class="card-header"><span class="card-title">Visao Diaria</span></div><div class="card-body">';
+  var byDay = {};
+  for (var k = 0; k < filtered.length; k++) {
+    var dd = filtered[k].d ? filtered[k].d.split(' ')[0] : '?';
+    if (!byDay[dd]) byDay[dd] = {t:0,r:0,d0:0,d1:0,d2:0,d3:0,gt3:0,pend:0};
+    byDay[dd].t++;
+    if (filtered[k].rp === 'Sim') byDay[dd].r++;
+    if (filtered[k].dp === '0') byDay[dd].d0++;
+    else if (filtered[k].dp === '1') byDay[dd].d1++;
+    else if (filtered[k].dp === '2') byDay[dd].d2++;
+    else if (filtered[k].dp === '3') byDay[dd].d3++;
+    else if (filtered[k].dp && parseInt(filtered[k].dp) > 3) byDay[dd].gt3++;
+    if (!filtered[k].dp || filtered[k].dp === '') byDay[dd].pend++;
+  }
+  h += '<div style="overflow:auto;max-height:400px"><table class="data-table"><thead><tr><th>Data</th><th>Criados</th><th>Resp.</th><th>MsmDia</th><th>1d</th><th>2d</th><th>3d</th><th>&gt;3d</th><th>Pend.</th></tr></thead><tbody>';
+  var dKeys = Object.keys(byDay).sort();
+  for (var di = 0; di < dKeys.length; di++) {
+    var dk = dKeys[di], dv = byDay[dk];
+    h += '<tr><td>' + dk + '</td><td><b>' + dv.t + '</b></td><td>' + dv.r + '</td><td style="color:#0ca30c">' + (dv.d0||'') + '</td><td>' + (dv.d1||'') + '</td><td>' + (dv.d2||'') + '</td><td>' + (dv.d3||'') + '</td><td style="color:#d03b3b;font-weight:700">' + (dv.gt3||'') + '</td><td style="color:#d97706">' + (dv.pend||'') + '</td></tr>';
+  }
+  h += '</tbody></table></div></div></div>';
+
+  el.innerHTML = h;
+}
+
 function renderAll() {
   try { renderAnalise(); } catch(e) { console.error('renderAnalise error:', e); document.getElementById('tab-analise').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar Análise RA: ' + escHtml(String(e)) + '</p>'; }
   try { renderTempo(); } catch(e) { console.error('renderTempo error:', e); document.getElementById('tab-tempo').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar Tempo: ' + escHtml(String(e)) + '</p>'; }
   try { renderProd(); } catch(e) { console.error('renderProd error:', e); document.getElementById('tab-prod').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar Produtividade: ' + escHtml(String(e)) + '</p>'; }
   try { renderCSAT(); } catch(e) { console.error('renderCSAT error:', e); document.getElementById('tab-csat').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar CSAT: ' + escHtml(String(e)) + '</p>'; }
-  try { renderConsid(); } catch(e) { console.error('renderConsid error:', e); document.getElementById('tab-consid').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar Considerações: ' + escHtml(String(e)) + '</p>'; }
+  try { renderConsid(); } catch(e) { console.error('renderConsid error:', e); document.getElementById('tab-consid').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar Consideracoes: ' + escHtml(String(e)) + '</p>'; }
+  try { renderTabela(); } catch(e) { console.error('renderTabela error:', e); document.getElementById('tab-tabela').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar Tabela: ' + escHtml(String(e)) + '</p>'; }
+  try { renderPeriodo(); } catch(e) { console.error('renderPeriodo error:', e); document.getElementById('tab-periodo').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar Periodo: ' + escHtml(String(e)) + '</p>'; }
   try { renderDuplic(); } catch(e) { console.error('renderDuplic error:', e); document.getElementById('tab-duplic').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar Duplicidade: ' + escHtml(String(e)) + '</p>'; }
   try { renderBase(); } catch(e) { console.error('renderBase error:', e); document.getElementById('tab-base').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar Base: ' + escHtml(String(e)) + '</p>'; }
   try { renderPremissas(); } catch(e) { console.error('renderPremissas error:', e); document.getElementById('tab-premissas').innerHTML = '<p style="color:#d03b3b">Erro ao renderizar Premissas: ' + escHtml(String(e)) + '</p>'; }
@@ -1280,10 +1456,126 @@ function downloadBlob(content, filename, mimeType) {
   URL.revokeObjectURL(url);
 }
 
+/* ===== AUTO-LOAD FROM GOOGLE SHEETS ===== */
+var SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1Ho7c6K0ijAaHOQRwyi2WQZd3MsuQeE5QrJOjoqMpSSg/gviz/tq?tqx=out:csv&gid=87252591';
+
+function loadFromSheet() {
+  var statusEl = document.getElementById('sheet-status');
+  if (statusEl) statusEl.textContent = 'Carregando dados da planilha...';
+
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', SHEET_CSV_URL, true);
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      var csvText = xhr.responseText;
+      var parsed = parseCSVToData(csvText);
+      if (parsed && parsed.length > 0) {
+        DATA = parsed;
+        filtered = DATA.slice();
+        populateFilters();
+        renderAll();
+        if (statusEl) statusEl.textContent = 'Atualizado da planilha: ' + DATA.length + ' registros (' + new Date().toLocaleTimeString('pt-BR') + ')';
+        if (statusEl) statusEl.style.color = '#059669';
+      } else {
+        if (statusEl) statusEl.textContent = 'Erro ao interpretar dados. Usando base embutida.';
+        if (statusEl) statusEl.style.color = '#d97706';
+      }
+    } else {
+      if (statusEl) statusEl.textContent = 'Planilha nao acessivel (' + xhr.status + '). Usando base embutida.';
+      if (statusEl) statusEl.style.color = '#d97706';
+    }
+  };
+  xhr.onerror = function() {
+    if (statusEl) statusEl.textContent = 'Erro de rede. Usando base embutida com ' + DATA.length + ' registros.';
+    if (statusEl) statusEl.style.color = '#d97706';
+  };
+  xhr.send();
+}
+
+function parseCSVToData(csvText) {
+  var lines = csvText.split('\n');
+  if (lines.length < 2) return null;
+
+  /* Parse header row */
+  var headers = parseCSVLine(lines[0]);
+  var HMAP = {
+    'Data Reclamacao':'d','Data Reclamação':'d',
+    'Status Hugme':'sh','Status HugMe':'sh',
+    'Status RA':'sr','Nome':'nm','Cidade':'c','Estado':'e','Tags':'t',
+    'Data de Resposta':'dr','Interacoes neste ticket':'i','Interações neste ticket':'i',
+    'Seu problema foi resolvido?':'rv','Voltaria a fazer negocio?':'vn','Voltaria a fazer negócio?':'vn',
+    'Nota':'n','Tempo 1ª Resp. (publico)':'tp','Tempo 1ª Resp. (público)':'tp',
+    'Atribuido Para':'ag','Atribuído Para':'ag',
+    'Avaliacao Favoravel':'af','Avaliação Favorável':'af',
+    'Data Consideracao Consumidor':'dc','Data Consideração Consumidor':'dc',
+    'Consideracao Consumidor':'cc','Consideração Consumidor':'cc',
+    'Semana Criacao':'sem','Semana Criação':'sem',
+    'Dia da Semana':'ds','Mes/Ano':'ma','Mês/Ano':'ma',
+    'Motivo Consolidado':'mt','Respondido?':'rp',
+    'Horas Sem Resposta':'hp','Dias p/ Responder':'dp','Faixa Resposta':'fx'
+  };
+
+  var colMap = {};
+  for (var ci = 0; ci < headers.length; ci++) {
+    var h = headers[ci].replace(/^"|"$/g, '').trim();
+    if (HMAP[h]) colMap[ci] = HMAP[h];
+  }
+
+  var mapped = Object.keys(colMap).length;
+  if (mapped < 5) return null;
+
+  var result = [];
+  for (var li = 1; li < lines.length; li++) {
+    if (!lines[li].trim()) continue;
+    var cols = parseCSVLine(lines[li]);
+    var rec = {d:'',sh:'',sr:'',nm:'',c:'',e:'',t:'',dr:'',i:'',rv:'',vn:'',n:'',tp:'',ag:'',dc:'',cc:'',sem:'',ds:'',ma:'',mt:'',rp:'',hp:'',dp:'',fx:'',af:''};
+    for (var k in colMap) {
+      if (colMap.hasOwnProperty(k)) {
+        var idx = parseInt(k);
+        rec[colMap[k]] = (idx < cols.length) ? cols[idx].replace(/^"|"$/g, '').trim() : '';
+      }
+    }
+    if (rec.d) result.push(rec);
+  }
+  return result;
+}
+
+function parseCSVLine(line) {
+  var result = [];
+  var current = '';
+  var inQuotes = false;
+  for (var i = 0; i < line.length; i++) {
+    var ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && i + 1 < line.length && line[i+1] === '"') {
+        current += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        result.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
 /* ===== INIT ===== */
 function init() {
   populateFilters();
   renderAll();
+  /* Try to load fresh data from published Google Sheet */
+  loadFromSheet();
 }
 init();
 
