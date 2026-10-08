@@ -24,12 +24,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reestruturar V9 — interface separada da base
+      - name: Preparar V9 corretamente
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('fs');
-
           const original = fs.readFileSync('index.html', 'utf8');
 
           const scriptOpen = original.indexOf('<script>');
@@ -37,46 +36,32 @@ jobs:
           const dataStart = original.indexOf('var DATA=');
           const dataEnd = original.indexOf('var DATA_ORIGINAL', dataStart);
 
-          if (scriptOpen < 0 || scriptClose < 0) {
-            throw new Error('Script principal da V9 não encontrado.');
-          }
+          if (scriptOpen < 0) throw new Error('Script principal da V9 não encontrado.');
           if (dataStart < 0 || dataEnd < 0 || dataEnd <= dataStart) {
             throw new Error('Base DATA da V9 não encontrada.');
           }
 
-          const dataExpr = original
-            .slice(dataStart + 'var DATA='.length, dataEnd)
-            .trim()
-            .replace(/;\s*$/, '');
+          const dataExpr = original.slice(dataStart + 'var DATA='.length, dataEnd)
+            .trim().replace(/;\s*$/, '');
 
-          if (dataExpr.length < 1000) {
-            throw new Error('Base DATA da V9 está vazia ou incompleta.');
-          }
+          if (dataExpr.length < 1000) throw new Error('Base DATA da V9 está incompleta.');
 
           const scriptStart = scriptOpen + '<script>'.length;
-          const scriptEnd = scriptClose;
+          const scriptEnd = scriptClose >= 0 ? scriptClose : original.length;
           let app = original.slice(scriptStart, scriptEnd);
 
           const dataStartInApp = dataStart - scriptStart;
           const dataEndInApp = dataEnd - scriptStart;
 
           if (dataStartInApp < 0 || dataEndInApp <= dataStartInApp) {
-            throw new Error('Posição da base dentro do script inválida.');
+            throw new Error('Posição da DATA inválida.');
           }
 
-          // Remove SOMENTE a declaração gigante DATA do aplicativo.
           app =
             app.slice(0, dataStartInApp) +
             'var DATA=window.__RA_DATA__||[];\n' +
             app.slice(dataEndInApp);
 
-          // Segurança: nunca deixar uma segunda declaração de DATA_ORIGINAL.
-          app = app.replace(
-            /var DATA_ORIGINAL\s*=\s*DATA\.slice\(\);/g,
-            'var DATA_ORIGINAL = DATA.slice();'
-          );
-
-          // Mantém a última base ao vivo disponível no navegador.
           const marker = 'function reloadLive(manual){';
           if (!app.includes('function saveLiveCSV(') && app.includes(marker)) {
             app = app.replace(
@@ -92,64 +77,58 @@ jobs:
             'saveLiveCSV(text);\n      processUpload(text);\n      filtered = DATA.slice();'
           );
 
-          // Se a planilha ao vivo falhar, tenta a última leitura salva antes da base incorporada.
           const initMarker = 'init(); snapshotStatus(); reloadLive(false);';
           if (app.includes(initMarker) && app.includes('loadLastCSV()')) {
             app = app.replace(
               initMarker,
-              'var __lastCSV=loadLastCSV();\n' +
-              'if(__lastCSV){try{processUpload(__lastCSV);}catch(e){}}\n' +
-              'init(); snapshotStatus(); reloadLive(false);'
+              'var __lastCSV=loadLastCSV();\nif(__lastCSV){try{processUpload(__lastCSV);}catch(e){}}\ninit(); snapshotStatus(); reloadLive(false);'
             );
           }
 
           const head = original.slice(0, scriptOpen);
-          const tail = original.slice(scriptClose + '</script>'.length);
-
-          const html =
-            head +
-            '<script src="data.js" defer></script>\n' +
-            '<script src="app.js" defer></script>\n' +
-            tail;
+          const tail = scriptClose >= 0
+            ? original.slice(scriptClose + '</script>'.length)
+            : '';
 
           fs.writeFileSync('data.js', 'window.__RA_DATA__=' + dataExpr + ';\n');
           fs.writeFileSync('app.js', app);
-          fs.writeFileSync('index.html', html);
+          fs.writeFileSync(
+            'index.html',
+            head +
+            '<script src="data.js" defer></script>\n' +
+            '<script src="app.js" defer></script>\n' +
+            tail
+          );
 
-          const checks = {
-            originalBytes: Buffer.byteLength(original),
-            indexBytes: fs.statSync('index.html').size,
+          const out = fs.readFileSync('index.html','utf8');
+          const check = {
+            originalBytes: original.length,
+            publishedBytes: out.length,
             dataBytes: fs.statSync('data.js').size,
             appBytes: fs.statSync('app.js').size,
-            dataDeclarationInApp: (app.match(/var DATA=/g) || []).length,
-            dataDeclarationInIndex: (html.match(/var DATA=/g) || []).length,
-            originalDeclarationInApp: (app.match(/var DATA_ORIGINAL/g) || []).length
+            headers: (out.match(/<div class="header"/g)||[]).length,
+            dataInIndex: (out.match(/var DATA=/g)||[]).length,
+            dataInApp: (app.match(/var DATA=/g)||[]).length,
+            scripts: (out.match(/<script/g)||[]).length
           };
+          console.log(JSON.stringify(check,null,2));
 
-          console.log(JSON.stringify(checks, null, 2));
-
-          if (checks.dataDeclarationInApp !== 1) {
-            throw new Error('app.js não ficou com exatamente uma DATA.');
-          }
-          if (checks.dataDeclarationInIndex !== 0) {
-            throw new Error('index.html ainda contém DATA embutida.');
-          }
+          if (check.headers !== 1) throw new Error('Quantidade de cabeçalhos diferente de 1.');
+          if (check.dataInIndex !== 0) throw new Error('DATA ainda está dentro do index.html.');
+          if (check.dataInApp !== 1) throw new Error('DATA não foi corretamente externalizada.');
+          if (check.scripts !== 2) throw new Error('Esperados exatamente data.js + app.js.');
           NODE
 
-      - name: Validar estrutura publicada
+      - name: Validar publicação
         shell: bash
         run: |
           test -s index.html
           test -s data.js
           test -s app.js
-          grep -q 'src="data.js" defer' index.html
-          grep -q 'src="app.js" defer' index.html
+          test "$(grep -o '<div class="header"' index.html | wc -l)" -eq 1
+          test "$(grep -o 'var DATA=' index.html | wc -l)" -eq 0
           test "$(grep -o 'var DATA=' app.js | wc -l)" -eq 1
-          if grep -q 'var DATA=' index.html; then
-            echo "ERRO: DATA duplicada no index.html"
-            exit 1
-          fi
-          echo "Estrutura V9 validada sem DATA duplicada no HTML."
+          echo "V9 validada: 1 cabeçalho, DATA separada e app único."
 
       - name: Configurar Pages
         uses: actions/configure-pages@v5
