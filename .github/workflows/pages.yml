@@ -30,76 +30,39 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const original = fs.readFileSync('index.html', 'utf8');
-
           const scriptOpen = original.indexOf('<script>');
           const scriptClose = original.lastIndexOf('</script>');
           const dataStart = original.indexOf('var DATA=');
           const dataEnd = original.indexOf('var DATA_ORIGINAL', dataStart);
-
           if (scriptOpen < 0) throw new Error('Script principal da V9 não encontrado.');
-          if (dataStart < 0 || dataEnd < 0 || dataEnd <= dataStart) {
-            throw new Error('Base DATA da V9 não encontrada.');
-          }
-
-          const dataExpr = original.slice(dataStart + 'var DATA='.length, dataEnd)
-            .trim().replace(/;\s*$/, '');
-
+          if (dataStart < 0 || dataEnd < 0 || dataEnd <= dataStart) throw new Error('Base DATA da V9 não encontrada.');
+          const dataExpr = original.slice(dataStart + 'var DATA='.length, dataEnd).trim().replace(/;\s*$/, '');
           if (dataExpr.length < 1000) throw new Error('Base DATA da V9 está incompleta.');
-
           const scriptStart = scriptOpen + '<script>'.length;
           const scriptEnd = scriptClose >= 0 ? scriptClose : original.length;
           let app = original.slice(scriptStart, scriptEnd);
-
           const dataStartInApp = dataStart - scriptStart;
           const dataEndInApp = dataEnd - scriptStart;
-
-          if (dataStartInApp < 0 || dataEndInApp <= dataStartInApp) {
-            throw new Error('Posição da DATA inválida.');
-          }
-
-          app =
-            app.slice(0, dataStartInApp) +
-            'var DATA=window.__RA_DATA__||[];\n' +
-            app.slice(dataEndInApp);
-
+          if (dataStartInApp < 0 || dataEndInApp <= dataStartInApp) throw new Error('Posição da DATA inválida.');
+          app = app.slice(0, dataStartInApp) + 'var DATA=window.__RA_DATA__||[];\n' + app.slice(dataEndInApp);
           const marker = 'function reloadLive(manual){';
           if (!app.includes('function saveLiveCSV(') && app.includes(marker)) {
-            app = app.replace(
-              marker,
+            app = app.replace(marker,
               'function saveLiveCSV(text){try{localStorage.setItem("kra_last_csv",text);localStorage.setItem("kra_last_csv_at",new Date().toISOString());}catch(e){}}\n' +
-              'function loadLastCSV(){try{return localStorage.getItem("kra_last_csv")||"";}catch(e){return ""}}\n' +
-              marker
-            );
+              'function loadLastCSV(){try{return localStorage.getItem("kra_last_csv")||"";}catch(e){return ""}}\n' + marker);
           }
-
-          app = app.replace(
-            /processUpload\(text\);\s*filtered = DATA\.slice\(\);/,
-            'saveLiveCSV(text);\n      processUpload(text);\n      filtered = DATA.slice();'
-          );
-
+          app = app.replace(/processUpload\(text\);\s*filtered = DATA\.slice\(\);/,
+            'saveLiveCSV(text);\n      processUpload(text);\n      filtered = DATA.slice();');
           const initMarker = 'init(); snapshotStatus(); reloadLive(false);';
           if (app.includes(initMarker) && app.includes('loadLastCSV()')) {
-            app = app.replace(
-              initMarker,
-              'var __lastCSV=loadLastCSV();\nif(__lastCSV){try{processUpload(__lastCSV);}catch(e){}}\ninit(); snapshotStatus(); reloadLive(false);'
-            );
+            app = app.replace(initMarker,
+              'var __lastCSV=loadLastCSV();\nif(__lastCSV){try{processUpload(__lastCSV);}catch(e){}}\ninit(); snapshotStatus(); reloadLive(false);');
           }
-
           const head = original.slice(0, scriptOpen);
-          const tail = scriptClose >= 0
-            ? original.slice(scriptClose + '</script>'.length)
-            : '';
-
+          const tail = scriptClose >= 0 ? original.slice(scriptClose + '</script>'.length) : '';
           fs.writeFileSync('data.js', 'window.__RA_DATA__=' + dataExpr + ';\n');
           fs.writeFileSync('app.js', app);
-          fs.writeFileSync(
-            'index.html',
-            head +
-            '<script src="data.js" defer></script>\n' +
-            '<script src="app.js" defer></script>\n' +
-            tail
-          );
-
+          fs.writeFileSync('index.html', head + '<script src="data.js" defer></script>\n<script src="app.js" defer></script>\n' + tail);
           const out = fs.readFileSync('index.html','utf8');
           const check = {
             originalBytes: original.length,
@@ -112,7 +75,6 @@ jobs:
             scripts: (out.match(/<script/g)||[]).length
           };
           console.log(JSON.stringify(check,null,2));
-
           if (check.headers !== 1) throw new Error('Quantidade de cabeçalhos diferente de 1.');
           if (check.dataInIndex !== 0) throw new Error('DATA ainda está dentro do index.html.');
           if (check.dataInApp !== 1) throw new Error('DATA não foi corretamente externalizada.');
@@ -127,7 +89,7 @@ jobs:
           test -s app.js
           test "$(grep -o '<div class="header"' index.html | wc -l)" -eq 1
           test "$(grep -o 'var DATA=' index.html | wc -l)" -eq 0
-          test "$(grep -o 'var DATA=window.__RA_DATA__||[];' app.js | wc -l)" -eq 1
+          test "$(grep -F -o 'var DATA=window.__RA_DATA__||[];' app.js | wc -l)" -eq 1
           echo "V9 validada: 1 cabeçalho, DATA separada e app único."
 
       - name: Configurar Pages
