@@ -1567,6 +1567,9 @@ function loadFromSheet() {
 function init() {
   populateFilters();
   renderAll();
+  /* Busca a versão mais recente da base ao abrir a dashboard.
+     Se o Google Sheets não responder, mantém a base incorporada no HTML. */
+  loadFromSheet();
 }
 init();
 
