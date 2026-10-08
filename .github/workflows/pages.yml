@@ -108,7 +108,7 @@ jobs:
             appBytes: fs.statSync('app.js').size,
             headers: (out.match(/<div class="header"/g)||[]).length,
             dataInIndex: (out.match(/var DATA=/g)||[]).length,
-            dataInApp: (app.match(/var DATA=/g)||[]).length,
+            dataInApp: (app.match(/var DATA=window\.\__RA_DATA__\|\|\[\];/g)||[]).length,
             scripts: (out.match(/<script/g)||[]).length
           };
           console.log(JSON.stringify(check,null,2));
@@ -127,7 +127,7 @@ jobs:
           test -s app.js
           test "$(grep -o '<div class="header"' index.html | wc -l)" -eq 1
           test "$(grep -o 'var DATA=' index.html | wc -l)" -eq 0
-          test "$(grep -o 'var DATA=' app.js | wc -l)" -eq 1
+          test "$(grep -o 'var DATA=window.__RA_DATA__||[];' app.js | wc -l)" -eq 1
           echo "V9 validada: 1 cabeçalho, DATA separada e app único."
 
       - name: Configurar Pages
