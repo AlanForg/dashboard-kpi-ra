@@ -24,49 +24,132 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Preparar V9 sem bloquear a interface
+      - name: Reestruturar V9 — interface separada da base
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('fs');
-          let html = fs.readFileSync('index.html', 'utf8');
-          const start = html.indexOf('var DATA=');
-          const end = html.indexOf('var DATA_ORIGINAL', start);
-          if (start < 0 || end < 0 || end <= start) throw new Error('Não foi possível localizar a base DATA da V9.');
 
-          const dataExpr = html.slice(start + 'var DATA='.length, end).trim().replace(/;\s*$/, '');
-          if (!dataExpr || dataExpr.length < 1000) throw new Error('A base V9 está vazia ou incompleta.');
-          console.log('Base V9 extraída:', dataExpr.length, 'caracteres.');
+          const original = fs.readFileSync('index.html', 'utf8');
 
-          fs.writeFileSync('data.js', 'window.__RA_DATA__=' + dataExpr + ';\\n');
+          const scriptOpen = original.indexOf('<script>');
+          const scriptClose = original.lastIndexOf('</script>');
+          const dataStart = original.indexOf('var DATA=');
+          const dataEnd = original.indexOf('var DATA_ORIGINAL', dataStart);
 
-          let app = html.slice(html.indexOf('<script>') + 8, html.lastIndexOf('</script>'));
-          app = app.replace(/^var DATA=\[.*?\];\s*/s, 'var DATA=window.__RA_DATA__||[];\\n');
-          app = app.replace(/var DATA_ORIGINAL\s*=\s*DATA\.slice\(\);/, 'var DATA_ORIGINAL = DATA.slice();');
-          
-          // Guarda a última leitura bem-sucedida da planilha para uso quando ela estiver temporariamente indisponível.
-          const marker = 'function reloadLive(manual){';
-          if (!app.includes('function saveLiveCSV(')) {
-            app = app.replace(marker,
-              'function saveLiveCSV(text){try{localStorage.setItem("kra_last_csv",text);localStorage.setItem("kra_last_csv_at",new Date().toISOString());}catch(e){}}\\n' +
-              'function loadLastCSV(){try{return localStorage.getItem("kra_last_csv")||"";}catch(e){return ""}}\\n' +
-              marker);
+          if (scriptOpen < 0 || scriptClose < 0) {
+            throw new Error('Script principal da V9 não encontrado.');
           }
-          app = app.replace('processUpload(text);\\n      filtered = DATA.slice();',
-            'saveLiveCSV(text);\\n      processUpload(text);\\n      filtered = DATA.slice();');
+          if (dataStart < 0 || dataEnd < 0 || dataEnd <= dataStart) {
+            throw new Error('Base DATA da V9 não encontrada.');
+          }
 
+          const dataExpr = original
+            .slice(dataStart + 'var DATA='.length, dataEnd)
+            .trim()
+            .replace(/;\s*$/, '');
+
+          if (dataExpr.length < 1000) {
+            throw new Error('Base DATA da V9 está vazia ou incompleta.');
+          }
+
+          const scriptStart = scriptOpen + '<script>'.length;
+          const scriptEnd = scriptClose;
+          let app = original.slice(scriptStart, scriptEnd);
+
+          const dataStartInApp = dataStart - scriptStart;
+          const dataEndInApp = dataEnd - scriptStart;
+
+          if (dataStartInApp < 0 || dataEndInApp <= dataStartInApp) {
+            throw new Error('Posição da base dentro do script inválida.');
+          }
+
+          // Remove SOMENTE a declaração gigante DATA do aplicativo.
+          app =
+            app.slice(0, dataStartInApp) +
+            'var DATA=window.__RA_DATA__||[];\n' +
+            app.slice(dataEndInApp);
+
+          // Segurança: nunca deixar uma segunda declaração de DATA_ORIGINAL.
+          app = app.replace(
+            /var DATA_ORIGINAL\s*=\s*DATA\.slice\(\);/g,
+            'var DATA_ORIGINAL = DATA.slice();'
+          );
+
+          // Mantém a última base ao vivo disponível no navegador.
+          const marker = 'function reloadLive(manual){';
+          if (!app.includes('function saveLiveCSV(') && app.includes(marker)) {
+            app = app.replace(
+              marker,
+              'function saveLiveCSV(text){try{localStorage.setItem("kra_last_csv",text);localStorage.setItem("kra_last_csv_at",new Date().toISOString());}catch(e){}}\n' +
+              'function loadLastCSV(){try{return localStorage.getItem("kra_last_csv")||"";}catch(e){return ""}}\n' +
+              marker
+            );
+          }
+
+          app = app.replace(
+            /processUpload\(text\);\s*filtered = DATA\.slice\(\);/,
+            'saveLiveCSV(text);\n      processUpload(text);\n      filtered = DATA.slice();'
+          );
+
+          // Se a planilha ao vivo falhar, tenta a última leitura salva antes da base incorporada.
+          const initMarker = 'init(); snapshotStatus(); reloadLive(false);';
+          if (app.includes(initMarker) && app.includes('loadLastCSV()')) {
+            app = app.replace(
+              initMarker,
+              'var __lastCSV=loadLastCSV();\n' +
+              'if(__lastCSV){try{processUpload(__lastCSV);}catch(e){}}\n' +
+              'init(); snapshotStatus(); reloadLive(false);'
+            );
+          }
+
+          const head = original.slice(0, scriptOpen);
+          const tail = original.slice(scriptClose + '</script>'.length);
+
+          const html =
+            head +
+            '<script src="data.js" defer></script>\n' +
+            '<script src="app.js" defer></script>\n' +
+            tail;
+
+          fs.writeFileSync('data.js', 'window.__RA_DATA__=' + dataExpr + ';\n');
           fs.writeFileSync('app.js', app);
+          fs.writeFileSync('index.html', html);
 
-          const main = html.slice(0, html.indexOf('<script>'));
-          const tail = html.slice(html.lastIndexOf('</script>') + 9);
-          const out = main + '<script src="data.js" defer></script>\\n<script src="app.js" defer></script>\\n' + tail;
-          fs.writeFileSync('index.html', out);
+          const checks = {
+            originalBytes: Buffer.byteLength(original),
+            indexBytes: fs.statSync('index.html').size,
+            dataBytes: fs.statSync('data.js').size,
+            appBytes: fs.statSync('app.js').size,
+            dataDeclarationInApp: (app.match(/var DATA=/g) || []).length,
+            dataDeclarationInIndex: (html.match(/var DATA=/g) || []).length,
+            originalDeclarationInApp: (app.match(/var DATA_ORIGINAL/g) || []).length
+          };
 
-          console.log('Arquivos separados e prontos para publicação.');
-          console.log('index.html:', fs.statSync('index.html').size, 'bytes');
-          console.log('data.js:', fs.statSync('data.js').size, 'bytes');
-          console.log('app.js:', fs.statSync('app.js').size, 'bytes');
+          console.log(JSON.stringify(checks, null, 2));
+
+          if (checks.dataDeclarationInApp !== 1) {
+            throw new Error('app.js não ficou com exatamente uma DATA.');
+          }
+          if (checks.dataDeclarationInIndex !== 0) {
+            throw new Error('index.html ainda contém DATA embutida.');
+          }
           NODE
+
+      - name: Validar estrutura publicada
+        shell: bash
+        run: |
+          test -s index.html
+          test -s data.js
+          test -s app.js
+          grep -q 'src="data.js" defer' index.html
+          grep -q 'src="app.js" defer' index.html
+          test "$(grep -o 'var DATA=' app.js | wc -l)" -eq 1
+          if grep -q 'var DATA=' index.html; then
+            echo "ERRO: DATA duplicada no index.html"
+            exit 1
+          fi
+          echo "Estrutura V9 validada sem DATA duplicada no HTML."
 
       - name: Configurar Pages
         uses: actions/configure-pages@v5
