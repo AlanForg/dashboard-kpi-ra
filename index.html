@@ -1468,6 +1468,98 @@ function downloadBlob(content, filename, mimeType) {
 var SHEET_ID = '1Ho7c6K0ijAaHOQRwyi2WQZd3MsuQeE5QrJOjoqMpSSg';
 var SHEET_GID = '87252591';
 
+function normalizeHeader(s) {
+  return String(s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
+
+function parseCSV(text) {
+  var rows = [], row = [], field = '', quoted = false;
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else quoted = false;
+      } else field += ch;
+    } else {
+      if (ch === '"') quoted = true;
+      else if (ch === ',') { row.push(field); field = ''; }
+      else if (ch === '\\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (ch === '\\r') { if (text[i + 1] === '\\n') i++; row.push(field); rows.push(row); row = []; field = ''; }
+      else field += ch;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function convertSheetRows(rows) {
+  if (!rows || rows.length < 2) throw new Error('A planilha respondeu sem registros.');
+
+  var HMAP = {};
+  function aliases(key, names) {
+    for (var i = 0; i < names.length; i++) HMAP[normalizeHeader(names[i])] = key;
+  }
+  aliases('d',['Data Reclamacao','Data Reclamação']);
+  aliases('sh',['Status Hugme','Status HugMe']);
+  aliases('sr',['Status RA']);
+  aliases('nm',['Nome']);
+  aliases('c',['Cidade']);
+  aliases('e',['Estado']);
+  aliases('t',['Tags']);
+  aliases('dr',['Data de Resposta']);
+  aliases('i',['Interações neste ticket','Interacoes neste ticket']);
+  aliases('rv',['Seu problema foi resolvido?']);
+  aliases('vn',['Voltaria a fazer negócio?','Voltaria a fazer negocio?']);
+  aliases('n',['Nota']);
+  aliases('tp',['Tempo 1ª Resp. (público)','Tempo 1ª Resp. (publico)']);
+  aliases('ag',['Atribuído Para','Atribuido Para']);
+  aliases('af',['Avaliação Favorável','Avaliacao Favoravel']);
+  aliases('dc',['Data Consideração Consumidor','Data Consideracao Consumidor']);
+  aliases('cc',['Consideração Consumidor','Consideracao Consumidor']);
+  aliases('sem',['Semana Criação','Semana Criacao']);
+  aliases('ds',['Dia da Semana']);
+  aliases('ma',['Mês/Ano','Mes/Ano']);
+  aliases('mt',['Motivo Consolidado']);
+  aliases('rp',['Respondido?']);
+  aliases('hp',['Horas Sem Resposta']);
+  aliases('dp',['Dias p/ Responder']);
+  aliases('fx',['Faixa Resposta']);
+
+  var headers = rows[0].map(normalizeHeader);
+  var colMap = {};
+  for (var ci = 0; ci < headers.length; ci++) {
+    if (HMAP[headers[ci]]) colMap[ci] = HMAP[headers[ci]];
+  }
+  if (!colMap.hasOwnProperty(0) && Object.keys(colMap).length < 5) {
+    throw new Error('Cabeçalhos da planilha não foram reconhecidos (' + Object.keys(colMap).length + ' colunas).');
+  }
+
+  var result = [];
+  for (var ri = 1; ri < rows.length; ri++) {
+    var rec = {d:'',sh:'',sr:'',nm:'',c:'',e:'',t:'',dr:'',i:'',rv:'',vn:'',n:'',tp:'',ag:'',dc:'',cc:'',sem:'',ds:'',ma:'',mt:'',rp:'',hp:'',dp:'',fx:'',af:''};
+    for (var k in colMap) {
+      var idx = parseInt(k,10);
+      rec[colMap[k]] = rows[ri][idx] != null ? String(rows[ri][idx]).trim() : '';
+    }
+    if (rec.d) result.push(rec);
+  }
+  if (!result.length) throw new Error('A planilha respondeu, mas não há registros com Data Reclamação.');
+  return result;
+}
+
+function finishSheetLoad(result, statusEl) {
+  DATA = result;
+  filtered = DATA.slice();
+  populateFilters();
+  renderAll();
+  if (statusEl) {
+    statusEl.textContent = 'Atualizado da planilha: ' + DATA.length + ' registros (' + new Date().toLocaleTimeString('pt-BR') + ')';
+    statusEl.style.color = '#059669';
+  }
+}
+
 function loadFromSheet() {
   var statusEl = document.getElementById('sheet-status');
   if (statusEl) {
@@ -1475,138 +1567,42 @@ function loadFromSheet() {
     statusEl.style.color = '#93c5fd';
   }
 
-  var callbackName = 'sheetCallback_' + Date.now();
-  var tqx = encodeURIComponent('out:json;responseHandler:' + callbackName);
   var url = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
-            '/gviz/tq?tqx=' + tqx + '&gid=' + encodeURIComponent(SHEET_GID) + '&headers=1';
+    '/gviz/tq?tqx=out:csv&gid=' + encodeURIComponent(SHEET_GID) +
+    '&headers=1&cachebust=' + Date.now();
 
-  var oldScript = document.getElementById('sheet-loader');
-  if (oldScript) oldScript.parentNode.removeChild(oldScript);
+  var controller = (window.AbortController) ? new AbortController() : null;
+  var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, 20000) : null;
 
-  var finished = false;
-  var timeoutId = setTimeout(function() {
-    if (finished) return;
-    finished = true;
-    delete window[callbackName];
-    var el = document.getElementById('sheet-loader');
-    if (el && el.parentNode) el.parentNode.removeChild(el);
+  fetch(url, {
+    method: 'GET',
+    mode: 'cors',
+    cache: 'no-store',
+    credentials: 'omit',
+    signal: controller ? controller.signal : undefined
+  })
+  .then(function(resp) {
+    if (!resp.ok) throw new Error('Google Sheets respondeu HTTP ' + resp.status + '.');
+    return resp.text();
+  })
+  .then(function(csv) {
+    if (!csv || !csv.trim()) throw new Error('O Google Sheets retornou uma base vazia.');
+    var result = convertSheetRows(parseCSV(csv));
+    finishSheetLoad(result, statusEl);
+  })
+  .catch(function(e) {
+    console.error('Google Sheets:', e);
     if (statusEl) {
-      statusEl.textContent = 'Tempo esgotado ao consultar o Sheets. Base embutida (' + DATA.length + ').';
+      var msg = (e && e.name === 'AbortError')
+        ? 'Tempo esgotado ao consultar o Google Sheets.'
+        : 'Não foi possível atualizar a base pelo Google Sheets.';
+      statusEl.textContent = msg + ' Base incorporada (' + DATA.length + ').';
       statusEl.style.color = '#d97706';
     }
-  }, 20000);
-
-  window[callbackName] = function(response) {
-    if (finished) return;
-    finished = true;
-    clearTimeout(timeoutId);
-
-    try {
-      if (!response) throw new Error('O Google Sheets não retornou dados.');
-
-      if (response.status && String(response.status).toLowerCase() !== 'ok') {
-        var detail = '';
-        if (response.errors && response.errors.length) {
-          detail = response.errors.map(function(err) {
-            return err.detailed_message || err.message || '';
-          }).filter(Boolean).join(' | ');
-        }
-        throw new Error(detail || 'Acesso negado ou resposta inválida do Google Sheets.');
-      }
-
-      if (!response.table || !response.table.cols || !response.table.rows) {
-        throw new Error('O Sheets respondeu sem uma tabela de dados.');
-      }
-
-      var table = response.table;
-      var cols = table.cols;
-      var rows = table.rows;
-
-      var HMAP = {
-        'Data Reclamacao':'d','Data Reclamação':'d',
-        'Status Hugme':'sh','Status HugMe':'sh',
-        'Status RA':'sr','Nome':'nm','Cidade':'c','Estado':'e','Tags':'t',
-        'Data de Resposta':'dr','Interações neste ticket':'i','Interacoes neste ticket':'i',
-        'Seu problema foi resolvido?':'rv','Voltaria a fazer negócio?':'vn','Voltaria a fazer negocio?':'vn',
-        'Nota':'n','Tempo 1ª Resp. (público)':'tp','Tempo 1ª Resp. (publico)':'tp',
-        'Atribuído Para':'ag','Atribuido Para':'ag',
-        'Avaliação Favorável':'af','Avaliacao Favoravel':'af',
-        'Data Consideração Consumidor':'dc','Data Consideracao Consumidor':'dc',
-        'Consideração Consumidor':'cc','Consideracao Consumidor':'cc',
-        'Semana Criação':'sem','Semana Criacao':'sem',
-        'Dia da Semana':'ds','Mês/Ano':'ma','Mes/Ano':'ma',
-        'Motivo Consolidado':'mt','Respondido?':'rp',
-        'Horas Sem Resposta':'hp','Dias p/ Responder':'dp','Faixa Resposta':'fx'
-      };
-
-      var colMap = {};
-      for (var ci = 0; ci < cols.length; ci++) {
-        var label = String(cols[ci].label || '').trim();
-        if (HMAP[label]) colMap[ci] = HMAP[label];
-      }
-
-      if (Object.keys(colMap).length < 5) {
-        throw new Error('Cabeçalhos da planilha não foram reconhecidos (' + Object.keys(colMap).length + ' colunas).');
-      }
-
-      var result = [];
-      for (var ri = 0; ri < rows.length; ri++) {
-        var cells = rows[ri] && rows[ri].c;
-        if (!cells) continue;
-
-        var rec = {d:'',sh:'',sr:'',nm:'',c:'',e:'',t:'',dr:'',i:'',rv:'',vn:'',n:'',tp:'',ag:'',dc:'',cc:'',sem:'',ds:'',ma:'',mt:'',rp:'',hp:'',dp:'',fx:'',af:''};
-
-        for (var k in colMap) {
-          if (!colMap.hasOwnProperty(k)) continue;
-          var idx = parseInt(k, 10);
-          var cell = (idx < cells.length) ? cells[idx] : null;
-          if (cell) {
-            rec[colMap[k]] = cell.f != null ? String(cell.f) :
-              (cell.v != null ? String(cell.v) : '');
-          }
-        }
-
-        if (rec.d) result.push(rec);
-      }
-
-      if (!result.length) throw new Error('A planilha respondeu, mas não há registros com Data Reclamação.');
-
-      DATA = result;
-      filtered = DATA.slice();
-      populateFilters();
-      renderAll();
-
-      if (statusEl) {
-        statusEl.textContent = 'Atualizado da planilha: ' + DATA.length + ' registros (' + new Date().toLocaleTimeString('pt-BR') + ')';
-        statusEl.style.color = '#059669';
-      }
-    } catch (e) {
-      console.error('Google Sheets:', e);
-      if (statusEl) {
-        statusEl.textContent = e.message + ' Base embutida (' + DATA.length + ').';
-        statusEl.style.color = '#d97706';
-      }
-    } finally {
-      delete window[callbackName];
-      var scriptEl = document.getElementById('sheet-loader');
-      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
-    }
-  };
-
-  var script = document.createElement('script');
-  script.id = 'sheet-loader';
-  script.src = url;
-  script.onerror = function() {
-    if (finished) return;
-    finished = true;
-    clearTimeout(timeoutId);
-    delete window[callbackName];
-    if (statusEl) {
-      statusEl.textContent = 'Não foi possível acessar o Google Sheets. Verifique se a planilha está compartilhada como "Qualquer pessoa com o link – Leitor". Base embutida (' + DATA.length + ').';
-      statusEl.style.color = '#d97706';
-    }
-  };
-  document.body.appendChild(script);
+  })
+  .finally(function() {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
 }
 
 /* ===== INIT ===== */
