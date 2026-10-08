@@ -998,3 +998,1591 @@ function renderProd(){
     var dt=d[i].d?d[i].d.split(" ")[0]:"?";
     var ag=d[i].ag||"(sem agente)";
     if(!dailyMap[dt]){dailyMap[dt]={};dates.push(dt);}
+    if(!dailyMap[dt][ag])dailyMap[dt][ag]={total:0,notaSum:0,notaCount:0};
+    dailyMap[dt][ag].total++;
+    var nota=parseFloat(d[i].n);
+    if(!isNaN(nota)&&d[i].n!==""){dailyMap[dt][ag].notaSum+=nota;dailyMap[dt][ag].notaCount++;}
+  }
+  dates.sort();
+  var dHeaders=["Data"];
+  for(var a=0;a<agents.length;a++){dHeaders.push(agents[a]);dHeaders.push("Nota "+agents[a]);}
+  dHeaders.push("Total");
+  var dRows=[];
+  for(var i=0;i<dates.length;i++){
+    var row=[dates[i]];
+    var totalDay=0;
+    for(var a=0;a<agents.length;a++){
+      var cell=dailyMap[dates[i]][agents[a]];
+      var cnt=cell?cell.total:0;
+      var ntM=cell&&cell.notaCount>0?(Math.round(cell.notaSum/cell.notaCount*10)/10).toFixed(1):"-";
+      row.push(cnt);
+      row.push(ntM);
+      totalDay+=cnt;
+    }
+    row.push(totalDay);
+    dRows.push(row);
+  }
+  var bid5=makeCardInGrid(grid,"pr-daily","Produtividade Diária","full-width");
+  renderDataTable(bid5,dHeaders,dRows,{title:"Produtividade Diária"});
+
+  // Weekly Table
+  var weeklyMap={};
+  var weeks=uniqueVals(d,"sem");
+  for(var i=0;i<d.length;i++){
+    var sem=d[i].sem||"?";
+    var ag=d[i].ag||"(sem agente)";
+    if(!weeklyMap[sem])weeklyMap[sem]={};
+    if(!weeklyMap[sem][ag])weeklyMap[sem][ag]={total:0,notaSum:0,notaCount:0};
+    weeklyMap[sem][ag].total++;
+    var nota=parseFloat(d[i].n);
+    if(!isNaN(nota)&&d[i].n!==""){weeklyMap[sem][ag].notaSum+=nota;weeklyMap[sem][ag].notaCount++;}
+  }
+  var wHeaders=["Semana"];
+  for(var a=0;a<agents.length;a++){wHeaders.push(agents[a]);wHeaders.push("Nota "+agents[a]);}
+  wHeaders.push("Total");
+  var wRows=[];
+  for(var i=0;i<weeks.length;i++){
+    var row=["Sem "+weeks[i]];
+    var totalW=0;
+    for(var a=0;a<agents.length;a++){
+      var cell=weeklyMap[weeks[i]]?weeklyMap[weeks[i]][agents[a]]:null;
+      var cnt=cell?cell.total:0;
+      var ntM=cell&&cell.notaCount>0?(Math.round(cell.notaSum/cell.notaCount*10)/10).toFixed(1):"-";
+      row.push(cnt);
+      row.push(ntM);
+      totalW+=cnt;
+    }
+    row.push(totalW);
+    wRows.push(row);
+  }
+  var bid6=makeCardInGrid(grid,"pr-weekly","Produtividade Semanal","full-width");
+  renderDataTable(bid6,wHeaders,wRows,{title:"Produtividade Semanal"});
+}
+
+/* ========== TAB: CSAT ========== */
+function renderCSAT(){
+  var panel=el("panel-csat");
+  var d=filtered;
+
+  var rvSim=0,rvNao=0,vnSim=0,vnNao=0,notaSum=0,notaCount=0;
+  for(var i=0;i<d.length;i++){
+    if(d[i].rv==="Sim")rvSim++;
+    else if(d[i].rv==="Não")rvNao++;
+    if(d[i].vn==="Sim")vnSim++;
+    else if(d[i].vn==="Não")vnNao++;
+    var nota=parseFloat(d[i].n);
+    if(!isNaN(nota)&&d[i].n!==""){notaSum+=nota;notaCount++;}
+  }
+  var notaMedia=notaCount>0?(notaSum/notaCount):0;
+
+  var html=makeKPIRow("panel-csat",[
+    {label:"Resolvido - Sim",value:fmtNum(rvSim),sub:fmtPct(rvSim,rvSim+rvNao),color:COLORS.green},
+    {label:"Resolvido - Não",value:fmtNum(rvNao),sub:fmtPct(rvNao,rvSim+rvNao),color:COLORS.red},
+    {label:"Voltaria - Sim",value:fmtNum(vnSim),sub:fmtPct(vnSim,vnSim+vnNao),color:COLORS.green},
+    {label:"Voltaria - Não",value:fmtNum(vnNao),sub:fmtPct(vnNao,vnSim+vnNao),color:COLORS.red},
+    {label:"Nota Média",value:(Math.round(notaMedia*10)/10).toFixed(1),sub:"de "+fmtNum(notaCount)+" avaliações",color:COLORS.orange}
+  ]);
+  panel.innerHTML=html;
+
+  var grid=ce("div");grid.className="chart-grid";
+  panel.appendChild(grid);
+
+  // Resolvido donut
+  var bid1=makeCardInGrid(grid,"cs-resolv","Seu problema foi resolvido?");
+  renderDonut(bid1,[
+    {label:"Sim",value:rvSim,color:COLORS.green},
+    {label:"Não",value:rvNao,color:COLORS.red}
+  ],{title:"Resolvido",centerText:fmtNum(rvSim+rvNao)});
+
+  // Voltaria donut
+  var bid2=makeCardInGrid(grid,"cs-volt","Voltaria a fazer negócio?");
+  renderDonut(bid2,[
+    {label:"Sim",value:vnSim,color:COLORS.green},
+    {label:"Não",value:vnNao,color:COLORS.red}
+  ],{title:"Voltaria",centerText:fmtNum(vnSim+vnNao)});
+
+  // Distribuição de Notas
+  var notaCounts={};
+  for(var i=0;i<=10;i++)notaCounts[String(i)]=0;
+  for(var i=0;i<d.length;i++){
+    var n=d[i].n;
+    if(n!==""&&!isNaN(parseInt(n))){
+      notaCounts[String(parseInt(n))]=(notaCounts[String(parseInt(n))]||0)+1;
+    }
+  }
+  var notaItems=[];
+  for(var i=0;i<=10;i++){
+    notaItems.push({label:"Nota "+i,value:notaCounts[String(i)]||0});
+  }
+  var notaColors=[];
+  for(var i=0;i<=10;i++){
+    if(i<7)notaColors.push(COLORS.red);
+    else if(i<9)notaColors.push(COLORS.orange);
+    else notaColors.push(COLORS.green);
+  }
+  var bid3=makeCardInGrid(grid,"cs-notas","Distribuição de Notas");
+  renderBarChartMultiColor(bid3,notaItems,notaColors,{title:"Distribuição de Notas"});
+
+  // Nota x Faixa
+  var fxNotas={};
+  for(var i=0;i<d.length;i++){
+    var fx=classifyFaixa(d[i].fx);
+    var nota=parseFloat(d[i].n);
+    if(!isNaN(nota)&&d[i].n!==""){
+      if(!fxNotas[fx])fxNotas[fx]={sum:0,count:0};
+      fxNotas[fx].sum+=nota;fxNotas[fx].count++;
+    }
+  }
+  var fxNotaItems=[];
+  for(var i=0;i<FAIXA_GROUPS.length;i++){
+    var fn=fxNotas[FAIXA_GROUPS[i]];
+    var avg=fn&&fn.count>0?(Math.round(fn.sum/fn.count*10)/10):0;
+    fxNotaItems.push({label:FAIXA_GROUPS[i],value:avg});
+  }
+  var bid4=makeCardInGrid(grid,"cs-fxnota","Nota Média por Faixa de Resposta");
+  renderBarChartMultiColor(bid4,fxNotaItems,FAIXA_COLORS,{title:"Nota Média por Faixa de Resposta"});
+}
+
+
+/* ========== TAB: TABELA ========== */
+function renderTabela(){
+  var panel=el("panel-tabela");
+  var d=filtered;
+  var headers=["Data","Agente","Motivo","Cidade","Estado","Status RA","Status HugMe","Faixa","Nota","Resolvido?","Respondido?","Tempo 1ªResp","Dias"];
+  var rows=[];
+  for(var i=0;i<d.length;i++){
+    var r=d[i];
+    rows.push([r.d,r.ag,r.mt,r.c,r.e,r.sr,r.sh,r.fx,r.n,r.rv,r.rp,r.tp,r.dp]);
+  }
+  var html="<div class=\"record-count\" style=\"margin-bottom:8px\"><strong>"+fmtNum(d.length)+"</strong> registros"+(d.length<DATA_ORIGINAL.length?" (filtrado de "+fmtNum(DATA_ORIGINAL.length)+")":"")+"</div>";
+  html+="<div class=\"table-scroll\" style=\"max-height:600px\"><table class=\"data-table\" id=\"main-tbl\">";
+  html+="<thead><tr>";
+  for(var j=0;j<headers.length;j++){
+    html+="<th onclick=\"sortTable('main-tbl',"+j+")\">"+escHtml(headers[j])+"<span class=\"sort-arrow\">&#9650;&#9660;</span></th>";
+  }
+  html+="</tr></thead><tbody>";
+  for(var i=0;i<rows.length;i++){
+    html+="<tr>";
+    for(var j=0;j<rows[i].length;j++){
+      var val=rows[i][j]!=null?String(rows[i][j]):"";
+      // Highlight badges
+      if(j===9&&val==="Sim")val="<span class=\"badge badge-green\">Sim</span>";
+      else if(j===9&&val==="Não")val="<span class=\"badge badge-red\">Não</span>";
+      else if(j===10&&val==="Sim")val="<span class=\"badge badge-green\">Sim</span>";
+      else if(j===10&&val==="Não")val="<span class=\"badge badge-red\">Não</span>";
+      else if(j===7&&val==="PENDENTE")val="<span class=\"badge badge-red\">PENDENTE</span>";
+      else val=escHtml(val);
+      html+="<td>"+val+"</td>";
+    }
+    html+="</tr>";
+  }
+  html+="</tbody></table></div>";
+  panel.innerHTML=html;
+  _cards["tabela-main"]={title:"Tabela Completa",headers:headers,rows:rows,type:"table"};
+}
+
+/* ========== TAB: BASE ========== */
+function renderDuplic(){
+  var panel=el("panel-duplic");
+  var d=filtered;
+  // Find names with 2+ tickets
+  var byName={};
+  for(var i=0;i<d.length;i++){
+    var nm=d[i].nm||"";
+    if(!nm)continue;
+    if(!byName[nm])byName[nm]=[];
+    byName[nm].push(d[i]);
+  }
+  var dups=[];
+  for(var k in byName){if(byName[k].length>1)dups.push({nm:k,tks:byName[k]});}
+  dups.sort(function(a,b){return b.tks.length-a.tks.length;});
+
+  var h="<div class='kpi-row' style='display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px'>";
+  h+="<div class='kpi-card' style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center'><div style='font-size:9px;color:#6b7280;text-transform:uppercase'>Clientes Reincidentes</div><div style='font-size:24px;font-weight:700'>"+dups.length+"</div></div>";
+  var totalDupTks=0;for(var j=0;j<dups.length;j++)totalDupTks+=dups[j].tks.length;
+  h+="<div class='kpi-card' style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center'><div style='font-size:9px;color:#6b7280;text-transform:uppercase'>Tickets Duplicados</div><div style='font-size:24px;font-weight:700;color:#d97706'>"+totalDupTks+"</div></div>";
+  h+="<div class='kpi-card' style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center'><div style='font-size:9px;color:#6b7280;text-transform:uppercase'>% do Total</div><div style='font-size:24px;font-weight:700'>"+(d.length?(totalDupTks/d.length*100).toFixed(1):0)+"%</div></div>";
+  h+="</div>";
+
+  h+="<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px'>";
+  h+="<h3 style='font-size:13px;font-weight:600;margin:0 0 8px'>Clientes com Multiplos Tickets ("+dups.length+")</h3>";
+  h+="<div style='max-height:500px;overflow:auto'>";
+  h+="<table style='width:100%;border-collapse:collapse;font-size:11px'>";
+  h+="<thead><tr style='background:#f7f8fa'><th style='padding:5px 7px;text-align:left;border-bottom:1px solid #e2e8f0'>Cliente</th><th>Qtd</th><th>Motivos</th><th>Respondidos</th><th>Dias Med.</th><th>Nota Med.</th><th>Status RA</th><th>Agente</th></tr></thead><tbody>";
+  for(var di=0;di<dups.length;di++){
+    var dup=dups[di];
+    var respC=dup.tks.filter(function(r){return r.rp==="Sim";}).length;
+    var diasArr=dup.tks.filter(function(r){return r.dp&&r.dp!=="";}).map(function(r){return parseInt(r.dp)||0;});
+    var avgDias=diasArr.length?(diasArr.reduce(function(a,b){return a+b;},0)/diasArr.length).toFixed(1):"-";
+    var notasArr=dup.tks.filter(function(r){return r.n&&r.n!=="";}).map(function(r){return parseFloat(r.n)||0;});
+    var avgNota=notasArr.length?(notasArr.reduce(function(a,b){return a+b;},0)/notasArr.length).toFixed(1):"-";
+    var motivos={};dup.tks.forEach(function(r){var m=r.mt||"?";motivos[m]=(motivos[m]||0)+1;});
+    var motStr=Object.keys(motivos).join(", ");
+    var statusArr={};dup.tks.forEach(function(r){var s=r.sr||"?";statusArr[s]=(statusArr[s]||0)+1;});
+    var stStr=Object.keys(statusArr).join(", ");
+    var agArr={};dup.tks.forEach(function(r){if(r.ag)agArr[r.ag]=(agArr[r.ag]||0)+1;});
+    var agStr=Object.keys(agArr).join(", ")||"N/A";
+    var notaClr=avgNota!=="-"&&parseFloat(avgNota)<7?"color:#dc2626;font-weight:700":"";
+    var diasClr=avgDias!=="-"&&parseFloat(avgDias)>3?"color:#dc2626;font-weight:700":"";
+    h+="<tr style='border-bottom:1px solid #f0f0f0'>";
+    h+="<td style='padding:4px 7px;font-weight:600'>"+escHtml(dup.nm)+"</td>";
+    h+="<td style='text-align:center;font-weight:700;color:#d97706'>"+dup.tks.length+"</td>";
+    h+="<td style='padding:4px 7px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' title='"+escHtml(motStr)+"'>"+escHtml(motStr)+"</td>";
+    h+="<td style='text-align:center'>"+respC+"/"+dup.tks.length+"</td>";
+    h+="<td style='text-align:center;"+diasClr+"'>"+avgDias+"</td>";
+    h+="<td style='text-align:center;"+notaClr+"'>"+avgNota+"</td>";
+    h+="<td style='padding:4px 7px;font-size:10px'>"+escHtml(stStr)+"</td>";
+    h+="<td style='padding:4px 7px;font-size:10px'>"+escHtml(agStr)+"</td>";
+    h+="</tr>";
+  }
+  h+="</tbody></table></div></div>";
+  panel.innerHTML=h;
+}
+
+function restoreBaseData(){
+  if(!BASE_DATA||!BASE_DATA.length){alert("A base original não está disponível neste HTML.");return;}
+  if(!confirm("Restaurar a base original embutida neste Dashboard? Os dados carregados atualmente serão substituídos."))return;
+  DATA.length=0;DATA_ORIGINAL.length=0;
+  for(var i=0;i<BASE_DATA.length;i++){var copy=Object.assign({},BASE_DATA[i]);DATA.push(copy);DATA_ORIGINAL.push(copy);}
+  filtered=DATA.slice();buildFilters();el("panel-base").setAttribute("data-rendered","");renderActiveTab();
+  if(el("upload-feedback"))showFeedback("&#10004; Base original restaurada: "+fmtNum(DATA_ORIGINAL.length)+" registros.","ok");
+}
+function evolutionMetrics(rows){
+  var total=rows.length,inter=0,closedResponded=0,evaluated=0,noteSum=0,responded=0,noResponse=0,daysSum=0,daysCount=0;
+  for(var i=0;i<rows.length;i++){var r=rows[i],x=parseFloat(String(r.i||"").replace(",",".")),n=parseFloat(String(r.n||"").replace(",",".")),dp=parseFloat(String(r.dp||"").replace(",","."));if(!isNaN(x)&&x>0)inter++;if(r.sh==="Fechado"&&r.rp==="Sim")closedResponded++;if(r.rp==="Sim")responded++;else noResponse++;if(r.n!==""&&!isNaN(n)){evaluated++;noteSum+=n;}if(!isNaN(dp)){daysSum+=dp;daysCount++;}}
+  return {total:total,inter:inter,closedResponded:closedResponded,evaluated:evaluated,avgNote:evaluated?noteSum/evaluated:null,responded:responded,noResponse:noResponse,avgDays:daysCount?daysSum/daysCount:null,evalRate:closedResponded?evaluated/closedResponded*100:null};
+}
+function evolutionPeriodRows(rows,type){
+  var groups={};
+  for(var i=0;i<rows.length;i++){var r=rows[i],dt=parseDashboardDate(r.d);if(!dt)continue;var key,label;
+    if(type==="daily"){key=dateToInputKey(r.d);label=key.split("-").reverse().join("/");}
+    else if(type==="monthly"){key=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0");label=String(dt.getMonth()+1).padStart(2,"0")+"/"+dt.getFullYear();}
+    else{var day=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate()),dayNum=(day.getDay()+6)%7,monday=new Date(day);monday.setDate(day.getDate()-dayNum),sunday=new Date(monday);sunday.setDate(monday.getDate()+6);var jan4=new Date(day.getFullYear(),0,4),jan4Day=(jan4.getDay()+6)%7,week1=new Date(jan4);week1.setDate(jan4.getDate()-jan4Day);var week=Math.floor((monday-week1)/604800000)+1,year=monday.getFullYear();key=year+"-W"+String(week).padStart(2,"0");var fs=function(x){return String(x.getDate()).padStart(2,"0")+"/"+String(x.getMonth()+1).padStart(2,"0")};label="Sem "+String(week).padStart(2,"0")+"/"+year+" ("+fs(monday)+"–"+fs(sunday)+")";}
+    if(!groups[key])groups[key]={key:key,label:label,rows:[]};groups[key].rows.push(r);
+  }
+  var arr=[];for(var k in groups)arr.push(groups[k]);arr.sort(function(a,b){return a.key<b.key?-1:a.key>b.key?1:0;});for(var j=0;j<arr.length;j++)arr[j].m=evolutionMetrics(arr[j].rows);return arr;
+}
+function evolutionTable(groups,title,subtitle){
+  var h="<div class=\"chart-card\" style=\"grid-column:1/-1;margin-bottom:16px\"><div class=\"card-header\"><span class=\"card-title\">"+escHtml(title)+"</span></div>";
+  h+="<div style=\"padding:8px 12px 0;color:#64748b;font-size:12px\">"+escHtml(subtitle)+"</div><div style=\"overflow:auto;padding:10px 12px 16px\"><table class=\"data-table\"><thead><tr>";
+  var cols=["Período","Tickets","Com interação","Fechados + respondidos","Avaliados","Média avaliação","Respondidos","Sem resposta","Média dias resposta","Taxa de avaliação"];for(var c=0;c<cols.length;c++)h+="<th>"+escHtml(cols[c])+"</th>";h+="</tr></thead><tbody>";
+  if(!groups.length)h+="<tr><td colspan=10 style=\"text-align:center;padding:20px\">Sem dados no período selecionado.</td></tr>";
+  for(var i=0;i<groups.length;i++){var m=groups[i].m;h+="<tr><td><strong>"+escHtml(groups[i].label)+"</strong></td><td>"+fmtNum(m.total)+"</td><td>"+fmtNum(m.inter)+"</td><td>"+fmtNum(m.closedResponded)+"</td><td>"+fmtNum(m.evaluated)+"</td><td>"+(m.avgNote===null?"-":m.avgNote.toFixed(2).replace(".",","))+"</td><td>"+fmtNum(m.responded)+"</td><td>"+fmtNum(m.noResponse)+"</td><td>"+(m.avgDays===null?"-":m.avgDays.toFixed(2).replace(".",","))+"</td><td>"+(m.evalRate===null?"-":m.evalRate.toFixed(1).replace(".",",")+"%")+"</td></tr>";}
+  return h+"</tbody></table></div></div>";
+}
+function renderEvolucao(){
+  var panel=el("panel-evolucao"),d=filtered,all=evolutionMetrics(d);var html="<div style=\"margin-bottom:14px;padding:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;color:#1e3a5f\"><strong>Análise temporal da base filtrada</strong><br><span style=\"font-size:12px;color:#475569\">Interação = <code>Interações neste ticket &gt; 0</code> · Fechados + respondidos = <code>Status HugMe = Fechado</code> e <code>Respondido? = Sim</code> · Avaliados = <code>Nota</code> preenchida · Média avaliação = média das notas preenchidas.</span></div>";
+  html+=makeKPIRow("panel-evolucao",[{label:"Tickets",value:fmtNum(all.total),color:COLORS.blue},{label:"Com interação",value:fmtNum(all.inter),sub:fmtPct(all.inter,all.total),color:COLORS.teal},{label:"Fechados + respondidos",value:fmtNum(all.closedResponded),sub:fmtPct(all.closedResponded,all.total),color:COLORS.purple},{label:"Avaliados",value:fmtNum(all.evaluated),sub:fmtPct(all.evaluated,all.total),color:COLORS.orange},{label:"Média avaliação",value:all.avgNote===null?"-":all.avgNote.toFixed(2).replace(".",","),sub:"escala 0-10",color:COLORS.green}]);
+  html+="<div class=\"chart-grid\">"+evolutionTable(evolutionPeriodRows(d,"monthly"),"Análise Mensal","A visão mensal considera a Data Reclamação e respeita os filtros aplicados.")+evolutionTable(evolutionPeriodRows(d,"weekly"),"Análise Semanal","Semanas calculadas pela Data Reclamação, de segunda a domingo.")+evolutionTable(evolutionPeriodRows(d,"daily"),"Análise Diária","Cada linha representa um dia da Data Reclamação.")+"</div>";panel.innerHTML=html;
+}
+
+function renderBase(){
+  var panel=el("panel-base");
+  if(panel.getAttribute("data-rendered")==="1")return;
+  var html="<div style=\"max-width:800px;margin:0 auto\">";
+  html+="<h2 style=\"margin-bottom:16px;color:#1e3a5f\">Carregar Base de Dados</h2>";
+  html+="<p style=\"color:#475569;margin-bottom:16px\">Carregue dados via arquivo CSV ou cole diretamente do Google Sheets / Excel.</p>";
+
+  // File upload
+  html+="<div class=\"upload-area\" id=\"upload-drop\">";
+  html+="<div style=\"font-size:36px;margin-bottom:8px\">&#128194;</div>";
+  html+="<div style=\"font-size:15px;font-weight:600;margin-bottom:4px\">Arraste um arquivo CSV ou clique para selecionar</div>";
+  html+="<div style=\"font-size:12px;color:#64748b\">Aceita CSV (separado por ; ou ,) com cabeçalhos na primeira linha</div>";
+  html+="<div class=\"upload-input\"><input type=\"file\" id=\"file-input\" accept=\".csv,.txt\" onchange=\"handleFileUpload(this)\"></div>";
+  html+="</div>";
+
+  // Paste area
+  html+="<h3 style=\"margin:20px 0 8px;color:#1e3a5f\">Ou cole dados (tab-separated do Google Sheets/Excel):</h3>";
+  html+="<textarea class=\"paste-area\" id=\"paste-area\" placeholder=\"Cole os dados aqui (com cabeçalhos na primeira linha)...\"></textarea>";
+  html+="<button class=\"btn-apply\" onclick=\"handlePaste()\" style=\"margin-top:8px\">Processar Dados Colados</button>";
+
+  // Feedback
+  html+="<div id=\"upload-feedback\"></div>";
+
+  // Current data info
+  html+="<div style=\"margin-top:24px;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0\">";
+  html+="<h3 style=\"margin-bottom:8px;color:#1e3a5f\">Base Atual</h3>";
+  html+="<p style=\"color:#475569\">Registros: <strong>"+fmtNum(DATA_ORIGINAL.length)+"</strong></p>";
+  html+="<p style=\"color:#475569\">Campos: d, sh, sr, c, e, t, dr, i, rv, vn, n, tp, ag, sem, ds, ma, mt, rp, hp, dp, fx</p>";
+  html+="</div>";
+
+  // Header mapping reference
+  html+="<div style=\"margin-top:16px;padding:16px;background:#eff6ff;border-radius:8px;border:1px solid #bfdbfe\">";
+  html+="<h3 style=\"margin-bottom:8px;color:#1e3a5f\">Mapeamento de Colunas</h3>";
+  html+="<div style=\"font-size:12px;color:#475569;line-height:1.8\">";
+  var mapKeys=[];
+  for(var k in HEADER_MAP){if(HEADER_MAP.hasOwnProperty(k))mapKeys.push(k)}
+  for(var i=0;i<mapKeys.length;i++){
+    html+="<span style=\"display:inline-block;margin:2px 4px;padding:2px 8px;background:#fff;border-radius:4px;border:1px solid #cbd5e1\">"+escHtml(mapKeys[i])+" &#8594; <code>"+HEADER_MAP[mapKeys[i]]+"</code></span>";
+  }
+  html+="</div></div>";
+
+  html+="</div>";
+  panel.innerHTML=html;
+  panel.setAttribute("data-rendered","1");
+}
+
+function handleFileUpload(input){
+  if(!input.files||!input.files[0])return;
+  var reader=new FileReader();
+  reader.onload=function(e){
+    processUpload(e.target.result);
+  };
+  reader.readAsText(input.files[0],"UTF-8");
+}
+
+function handlePaste(){
+  var text=el("paste-area").value;
+  if(!text||!text.replace(/\s/g,"")){
+    showFeedback("Nenhum dado para processar.","err");
+    return;
+  }
+  processUpload(text);
+}
+
+
+var CONSIDERATION_POSITIVE=[
+  "resolveu meu problema","tudo foi resolvido","problema resolvido","problema solucionado",
+  "resolveu","resolveram","conseguiu resolver","solucionado","solucionada",
+  "ótimo","ótima","excelente","bom atendimento","atendimento eficiente","bom","boa",
+  "obrigado","obrigada","agradeço","agradecida","satisfeito","satisfeita",
+  "perfeito","perfeita","top","parabéns","muito bom","muito boa"
+];
+var CONSIDERATION_NEGATIVE=[
+  "nada foi resolvido","não resolveu","nao resolveu","não resolveram","nao resolveram",
+  "não resolveu nada","nao resolveu nada","sem solução","sem solucao",
+  "nunca tem uma solução","nunca tem uma solucao","não solucionou","nao solucionou",
+  "péssimo","pessimo","péssima","pessima","absurdo","decepcionou","decepcionante",
+  "falta de atenção","falta de atencao","demora","demorado","demorada","atraso",
+  "não atendido","nao atendido","não ajudou","nao ajudou","problema não resolvido",
+  "problema nao resolvido","insatisfeito","insatisfeita","horrível","horrivel","descaso"
+];
+var CONSIDERATION_NEUTRAL=[
+  "ok","aguardando","aguardo","esperando","posição","posicao","retorno",
+  "informação","informacao","investigação","investigacao","confirmado","confirmada","ciente"
+];
+function considerationMatches(text, list){
+  var t=normalizeWord(text);
+  return list.filter(function(p){
+    var np=normalizeWord(p);
+    return np.indexOf(" ")>=0 ? t.indexOf(np)>=0 : new RegExp("\\b"+np.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b").test(t);
+  });
+}
+function classifyConsideration(text){
+  text=String(text||"");
+  if(!text.trim())return {sent:"",kw:""};
+  var neg=considerationMatches(text,CONSIDERATION_NEGATIVE);
+  var pos=considerationMatches(text,CONSIDERATION_POSITIVE);
+  var neu=considerationMatches(text,CONSIDERATION_NEUTRAL);
+  var t=normalizeWord(text);
+  if(t.indexOf("nada")>=0 && !neg.some(function(x){return normalizeWord(x)==="nada";}))neg.push("nada");
+  if(t.indexOf("conseguiu resolver")>=0 && !pos.some(function(x){return normalizeWord(x)==="conseguiu resolver";}))pos.push("conseguiu resolver");
+  var sent="Neutro";
+  if(neg.length && pos.length)sent=neg.length>=pos.length?"Negativo":"Positivo";
+  else if(neg.length)sent="Negativo";
+  else if(pos.length)sent="Positivo";
+  else if(neu.length)sent="Neutro";
+  var source=sent==="Negativo"?neg:(sent==="Positivo"?pos:neu);
+  var out=[];
+  source.slice().sort(function(a,b){return b.length-a.length;}).forEach(function(x){
+    var label=String(x).toLowerCase();
+    if(out.indexOf(label)<0 && out.length<4)out.push(label);
+  });
+  if(!out.length){
+    var words=text.toLowerCase().match(/[A-Za-zÀ-ÿ]{4,}/g)||[];
+    var stop={para:1,com:1,que:1,uma:1,esse:1,essa:1,isso:1,muito:1,mais:1,não:1,nao:1,foi:1,são:1,sao:1,seu:1,sua:1,como:1};
+    words.forEach(function(w){if(out.length<3&&!stop[normalizeWord(w)]&&out.indexOf(w)<0)out.push(w);});
+  }
+  return {sent:sent,kw:out.join("; ")};
+}
+function considerationWeek(value){
+  var dt=parseDashboardDate(value);
+  if(!dt)return "";
+  var tmp=new Date(Date.UTC(dt.getFullYear(),dt.getMonth(),dt.getDate()));
+  var day=tmp.getUTCDay()||7;
+  tmp.setUTCDate(tmp.getUTCDate()+4-day);
+  var yearStart=new Date(Date.UTC(tmp.getUTCFullYear(),0,1));
+  return String(Math.ceil((((tmp-yearStart)/86400000)+1)/7));
+}
+function kwPolarity(kw){
+  if(!KW_POL_MAP){KW_POL_MAP={};Object.keys(KW_POLARITY).forEach(function(s){KW_POLARITY[s].forEach(function(w){KW_POL_MAP[normalizeWord(w)]=s;});});}
+  var parts=String(kw||"").split(";"),found={};
+  parts.forEach(function(k){var p=KW_POL_MAP[normalizeWord(k).replace(/^\s+|\s+$/g,"")];if(p)found[p]=(found[p]||0)+1;});
+  var keys=Object.keys(found);
+  if(keys.length===1)return keys[0];
+  if(keys.length>1)return keys.sort(function(a,b){return found[b]-found[a];})[0];
+  return "";
+}
+function fixPositiveWithNegativeKeyword(r){
+  // Cada palavra-chave (BA) tem uma polaridade fixa (tabela KW_POLARITY). Ela define em qual balão a avaliação entra.
+  if(!r||!r.kw)return r;
+  var p=kwPolarity(r.kw);
+  if(p&&normalizeWord(r.sent)!==normalizeWord(p)){r.sent_orig=r.sent;r.sent=p;}
+  return r;
+}
+function deriveConsiderationFields(r){
+  if(!r)return r;
+  // Semana (AY), Sentimento (AZ) e Palavra-Chave (BA) vêm da planilha.
+  // Ajuste: o balão (Positivo/Negativo/Neutro) segue a polaridade da palavra-chave (BA).
+  fixPositiveWithNegativeKeyword(r);
+  if(!r.af)r.af="";
+  return r;
+}
+
+function processUpload(text){
+  // CSV parser robusto: preserva quebras de linha dentro de campos entre aspas.
+  text=String(text||"").replace(/^\uFEFF/,"");
+  if(!text||!text.replace(/\s/g,"")){
+    showFeedback("Nenhum dado para processar.","err");
+    return;
+  }
+
+  var sep=detectCSVSeparator(text);
+  var rows=parseCSV(text,sep);
+  if(!rows||rows.length<2){
+    showFeedback("Arquivo deve ter pelo menos 2 registros (cabeçalho + dados).","err");
+    return;
+  }
+
+  var headers=rows[0].map(function(h){
+    return String(h==null?"":h).replace(/^\uFEFF/,"").replace(/^\s+|\s+$/g,"");
+  });
+
+  // Build column index map using the dashboard's existing HEADER_MAP.
+  var colMap={};
+  var mappedCount=0;
+  for(var i=0;i<headers.length;i++){
+    var h=headers[i];
+    if(HEADER_MAP[h]){
+      colMap[i]=HEADER_MAP[h];
+      mappedCount++;
+    }
+  }
+
+  if(mappedCount===0){
+    showFeedback("Nenhum cabeçalho reconhecido. Verifique se a primeira linha contém os nomes das colunas.","err");
+    return;
+  }
+
+  var newData=[];
+  var malformedRows=0;
+  var expectedColumns=headers.length;
+
+  for(var i=1;i<rows.length;i++){
+    var cells=rows[i];
+    // Ignore completely empty records, but never split records by physical line.
+    var hasContent=false;
+    for(var c=0;c<cells.length;c++){
+      if(String(cells[c]==null?"":cells[c]).trim()!==""){hasContent=true;break;}
+    }
+    if(!hasContent)continue;
+
+    if(cells.length!==expectedColumns)malformedRows++;
+
+    var record={d:"",sh:"",sr:"",c:"",e:"",t:"",dr:"",i:"",rv:"",vn:"",n:"",tp:"",ag:"",sem:"",ds:"",ma:"",mt:"",rp:"",hp:"",dp:"",fx:"",nm:"",tx:"",da:"",af:"",dc:"",cc:"",sc:"",sent:"",kw:""};
+    for(var j=0;j<headers.length;j++){
+      if(colMap[j]){
+        var value=(j<cells.length&&cells[j]!=null)?String(cells[j]):"";
+        // Keep line breaks that belong to a quoted CSV field. Only remove
+        // accidental whitespace surrounding the complete cell value.
+        record[colMap[j]]=value.replace(/^\s+|\s+$/g,"");
+      }
+    }
+    deriveConsiderationFields(record);
+    newData.push(record);
+  }
+
+  if(newData.length===0){
+    showFeedback("Nenhum registro encontrado nos dados.","err");
+    return;
+  }
+
+  DATA.length=0;
+  DATA_ORIGINAL.length=0;
+  for(var i=0;i<newData.length;i++){
+    DATA.push(newData[i]);
+    DATA_ORIGINAL.push(newData[i]);
+  }
+  filtered=DATA.slice();
+
+  // Rebuild filters and all dashboard views from the uploaded base.
+  buildFilters();
+
+  var msg="&#10004; "+fmtNum(newData.length)+" registros carregados, "+mappedCount+" campos mapeados";
+  if(malformedRows>0){
+    msg+=". Atenção: "+fmtNum(malformedRows)+" registro(s) tinham quantidade de colunas diferente do cabeçalho.";
+  }
+  showFeedback(msg,"ok");
+
+  // Reset base panel to allow re-render with new count.
+  el("panel-base").setAttribute("data-rendered","");
+  renderBase();
+
+  // Re-render visible dashboard components so table/charts immediately use the new data.
+  try{
+    if(typeof renderDashboard==='function')renderDashboard();
+  }catch(e){}
+}
+
+function detectCSVSeparator(text){
+  var firstRow=[];
+  var current="";
+  var inQuotes=false;
+  for(var i=0;i<text.length;i++){
+    var ch=text[i];
+    if(ch==='"'){
+      if(inQuotes&&i+1<text.length&&text[i+1]==='"'){i++;}
+      else{inQuotes=!inQuotes;}
+    }else if((ch==='\n'||ch==='\r')&&!inQuotes){
+      break;
+    }else{
+      current+=ch;
+    }
+  }
+  firstRow=current;
+  var candidates=[";",",","\t"];
+  var best=";", bestCount=-1;
+  for(var c=0;c<candidates.length;c++){
+    var sep=candidates[c], count=0, quoted=false;
+    for(var j=0;j<firstRow.length;j++){
+      var x=firstRow[j];
+      if(x==='"'){
+        if(quoted&&j+1<firstRow.length&&firstRow[j+1]==='"'){j++;}
+        else{quoted=!quoted;}
+      }else if(x===sep&&!quoted){count++;}
+    }
+    if(count>bestCount){bestCount=count;best=sep;}
+  }
+  return best;
+}
+
+function parseCSV(text,sep){
+  var rows=[];
+  var row=[];
+  var current="";
+  var inQuotes=false;
+
+  for(var i=0;i<text.length;i++){
+    var ch=text[i];
+
+    if(ch==='"'){
+      if(inQuotes&&i+1<text.length&&text[i+1]==='"'){
+        current+='"';
+        i++;
+      }else{
+        inQuotes=!inQuotes;
+      }
+    }else if(ch===sep&&!inQuotes){
+      row.push(current);
+      current="";
+    }else if((ch==='\n'||ch==='\r')&&!inQuotes){
+      // Treat CRLF as one line break.
+      if(ch==='\r'&&i+1<text.length&&text[i+1]==='\n')i++;
+      row.push(current);
+      current="";
+      // Do not create a duplicate empty record for a trailing newline.
+      if(row.length>1||row[0]!=="")rows.push(row);
+      row=[];
+    }else{
+      current+=ch;
+    }
+  }
+
+  // Flush final record when the file does not end with a newline.
+  if(current!==""||row.length>0){
+    row.push(current);
+    if(row.length>1||row[0]!=="")rows.push(row);
+  }
+
+  return rows;
+}
+
+function showFeedback(msg,type){
+  var fb=el("upload-feedback");
+  if(!fb)return;
+  fb.innerHTML="<div class=\"upload-feedback "+(type==="ok"?"upload-ok":"upload-err")+"\">"+msg+"</div>";
+}
+
+
+/* ========== TAB: PREMISSAS ========== */
+function renderPalavras(){
+  var panel=el("panel-palavras");
+  var d=filtered||[];
+  // Universo = linhas com Sentimento Consideração (coluna AZ) preenchido
+  var consid=d.filter(function(r){return String(r.sent||"").trim()!=="";});
+  function bySent(s){return consid.filter(function(r){return normalizeWord(r.sent)===s;});}
+  var pos=bySent("positivo"),neg=bySent("negativo"),neu=bySent("neutro");
+
+  // Conta Palavra-Chave (coluna BA); agrupa variações só de maiúscula/minúscula
+  function kwCounts(rows){
+    var m={},shown={};
+    rows.forEach(function(r){
+      var raw=String(r.kw||"");
+      if(!raw.trim())return;
+      raw.split(";").forEach(function(k){
+        k=k.replace(/^\s+|\s+$/g,"");
+        if(!k)return;
+        var key=k.toLowerCase();
+        m[key]=(m[key]||0)+1;
+        shown[key]=shown[key]||{};
+        shown[key][k]=(shown[key][k]||0)+1;
+      });
+    });
+    return Object.keys(m).map(function(key){
+      var variants=shown[key],best=Object.keys(variants).sort(function(a,b){return variants[b]-variants[a]||a.localeCompare(b);})[0];
+      return {word:best,count:m[key]};
+    }).sort(function(a,b){return b.count-a.count||a.word.localeCompare(b.word);});
+  }
+  var allKw=kwCounts(consid),posKw=kwCounts(pos),negKw=kwCounts(neg),neuKw=kwCounts(neu);
+  var fixedN=consid.filter(function(r){return r.sent_orig;}).length,fixedP=consid.filter(function(r){return normalizeWord(r.sent_orig)==="positivo";}).length,fixedU=consid.filter(function(r){return normalizeWord(r.sent_orig)==="neutro";}).length,fixedG=consid.filter(function(r){return normalizeWord(r.sent_orig)==="negativo";}).length;
+  var semKw=consid.filter(function(r){return !String(r.kw||"").trim();}).length;
+
+  var html="";
+  html+="<div style='margin-bottom:14px;padding:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;color:#1e3a5f'><strong>Análise das avaliações — Consideração do consumidor</strong><br><span style='font-size:12px;color:#475569'>Esta aba usa <strong>somente</strong> as colunas da planilha: <code>Semana Consideração</code> (AY), <code>Sentimento Consideração</code> (AZ) e <code>Palavra-Chave Consideração</code> (BA). O dashboard não recalcula sentimento nem palavras.</span>"+(fixedN?"<br><span style='font-size:12px;color:#b45309'>⚠ Cada palavra-chave foi colocada no balão da sua própria polaridade. "+fixedN+" avaliação(ões) estavam na planilha com sentimento diferente da palavra ("+fixedP+" Positivo, "+fixedU+" Neutro, "+fixedG+" Negativo) e foram reclassificadas. A lista está no fim da aba.</span>":"")+"</div>";
+  html+=makeKPIRow("panel-palavras",[
+    {label:"Com sentimento (AZ)",value:fmtNum(consid.length),sub:fmtPct(consid.length,d.length)+" da base filtrada",color:COLORS.blue},
+    {label:"Positivas",value:fmtNum(pos.length),sub:fmtPct(pos.length,consid.length)+" das avaliações",color:COLORS.green},
+    {label:"Negativas",value:fmtNum(neg.length),sub:fmtPct(neg.length,consid.length)+" das avaliações",color:COLORS.red},
+    {label:"Neutras",value:fmtNum(neu.length),sub:fmtPct(neu.length,consid.length)+" das avaliações",color:COLORS.orange},
+    {label:"Palavras-chave distintas",value:fmtNum(allKw.length),sub:"coluna BA",color:COLORS.purple},
+    {label:"Sem palavra-chave",value:fmtNum(semKw),sub:"AZ preenchido, BA vazio",color:COLORS.slate}
+  ]);
+
+  html+="<div class='wordcloud-grid'>";
+  html+=wordCloudCard("☁️ Palavras-chave — positivas",posKw,"green","Sentimento Positivo");
+  html+=wordCloudCard("☁️ Palavras-chave — negativas",negKw,"red","Sentimento Negativo");
+  html+="</div>";
+  html+="<div class='wordcloud-grid' style='margin-top:18px'>";
+  html+=wordCloudCard("☁️ Palavras-chave — neutras",neuKw,"orange","Sentimento Neutro");
+  html+=wordCloudCard("☁️ Palavras-chave — todas",allKw,"purple","Todos os sentimentos");
+  html+="</div>";
+
+  html+="<div class='wordcloud-grid' style='margin-top:18px'>";
+  html+="<div class='wordcloud-card'><h3 style='color:#1e3a5f;margin-bottom:4px'>Top palavras-chave (todas)</h3><div style='font-size:12px;color:#64748b'>Coluna <code>Palavra-Chave Consideração</code> (BA)</div>"+renderWordTable(allKw)+"</div>";
+  html+="<div class='wordcloud-card'><h3 style='color:#1e3a5f;margin-bottom:4px'>Distribuição por semana da consideração</h3><div style='font-size:12px;color:#64748b'>Coluna <code>Semana Consideração</code> (AY) × <code>Sentimento Consideração</code> (AZ)</div>"+weekSentTable(consid)+"</div>";
+  html+="</div>";
+  html+="<details style='margin-top:18px;background:#fff;border-radius:10px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08)'><summary style='cursor:pointer;font-weight:700;color:#1e3a5f'>Classificação de cada palavra-chave (Positivo / Negativo / Neutro)</summary><div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:10px;font-size:12px'>";
+  [["Positivo","#059669"],["Negativo","#dc2626"],["Neutro","#d97706"]].forEach(function(t){
+    var cnt={};consid.forEach(function(r){if(normalizeWord(r.sent)===normalizeWord(t[0])&&r.kw){var k=String(r.kw).trim().toLowerCase();cnt[k]=(cnt[k]||0)+1;}});
+    var ks=Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a]||a.localeCompare(b);});
+    html+="<div><strong style='color:"+t[1]+"'>"+t[0]+" ("+ks.length+" palavras)</strong><ul style='margin:6px 0 0 18px'>"+ks.map(function(k){return "<li>"+escHtml(k)+" <span style='color:#94a3b8'>· "+cnt[k]+"</span></li>";}).join("")+"</ul></div>";
+  });
+  html+="</div></details>";
+  panel.innerHTML=html;
+}
+
+function weekSentTable(rows){
+  var m={};
+  rows.forEach(function(r){
+    var w=String(r.sc||"").replace(/\.0+$/,"").trim();
+    if(!w)return;
+    if(!m[w])m[w]={p:0,n:0,u:0};
+    var s=normalizeWord(r.sent);
+    if(s==="positivo")m[w].p++;else if(s==="negativo")m[w].n++;else m[w].u++;
+  });
+  var ws=Object.keys(m).sort(function(a,b){return parseInt(a)-parseInt(b);});
+  if(!ws.length)return "<div class=\"wordcloud-empty\" style=\"padding:40px\">Nenhuma semana encontrada com os filtros atuais.</div>";
+  var h="<table class=\"word-table\"><thead><tr><th>Semana</th><th>Positivo</th><th>Negativo</th><th>Neutro</th><th>Total</th></tr></thead><tbody>";
+  var tp=0,tn=0,tu=0;
+  ws.forEach(function(w){
+    var x=m[w];tp+=x.p;tn+=x.n;tu+=x.u;
+    h+="<tr><td><strong>Semana "+escHtml(w)+"</strong></td><td style='color:#059669'>"+x.p+"</td><td style='color:#dc2626'>"+x.n+"</td><td style='color:#d97706'>"+x.u+"</td><td><strong>"+(x.p+x.n+x.u)+"</strong></td></tr>";
+  });
+  h+="<tr style='background:#f8fafc'><td><strong>Total</strong></td><td><strong>"+tp+"</strong></td><td><strong>"+tn+"</strong></td><td><strong>"+tu+"</strong></td><td><strong>"+(tp+tn+tu)+"</strong></td></tr>";
+  return h+"</tbody></table>";
+}
+
+var WORD_STOPWORDS=("a ao aos as o os um uma uns umas de da das do dos e é em no na nas nos por para com sem que se seu sua seus suas ele ela eles elas eu me meu minha minhas muito muita muitoas muitoos mais menos mas ou porque como quando onde quem qual quais já nao não sim ser foi são sao era estavam estava estão estao tem tenho temos tinha ter há ha isso isto esse essa esses essas aquele aquela aquilo aqui ali lá de um uma ao pela pelo pelas pelos entre sobre até ate após apos ainda também tambem então entao só so sua seu suas seus você voce vocês voces meu minha nosso nossa nossos nossas quero queria poderia pode podem deve devem foi foram seja seja-se bom boa dia olá ola obrigado obrigada favor favorável favoravel problema problemas reclamação reclamação shopee empresa atendimento ticket tickets" ).split(/\s+/);
+var WORD_STOP={}; WORD_STOPWORDS.forEach(function(w){WORD_STOP[normalizeWord(w)]=true;});
+function normalizeWord(w){return String(w||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");}
+function wordCounts(rows){
+  var counts={};
+  rows.forEach(function(r){
+    var text=String(r.tx||"");
+    var clean=text.replace(/https?:\/\/\S+/gi," ").replace(/\b\d+[\w-]*\b/g," ");
+    var words=clean.match(/[A-Za-zÀ-ÿ]{3,}/g)||[];
+    words.forEach(function(raw){
+      var key=normalizeWord(raw);
+      if(!key||WORD_STOP[key]||key.length<3)return;
+      counts[key]=(counts[key]||0)+1;
+    });
+  });
+  return Object.keys(counts).map(function(k){return {word:k,count:counts[k]};}).sort(function(a,b){return b.count-a.count||a.word.localeCompare(b.word);});
+}
+function displayWord(w){
+  var map={
+    "nao":"não","tambem":"também","voce":"você","avaliacao":"avaliação","avaliacoes":"avaliações","reclamacao":"reclamação","pagamento":"pagamento","pagamentos":"pagamentos"
+  };
+  return map[w]||w;
+}
+function wordCloudCard(title,words,tone,subtitle){
+  var TONES={green:"#059669",red:"#dc2626",orange:"#d97706",blue:"#2563eb",purple:"#7c3aed"};
+  var top=words.slice(0,40), max=top.length?top[0].count:0, min=top.length?top[top.length-1].count:0;
+  var total=words.reduce(function(a,b){return a+b.count;},0);
+  var html="<div class=\"wordcloud-card\"><h3 style=\"color:#1e3a5f;margin-bottom:4px\">"+title+"</h3><div style=\"font-size:12px;color:#64748b\">"+subtitle+" · "+fmtNum(words.length)+" palavras-chave · "+fmtNum(total)+" ocorrências · tamanho proporcional à frequência</div>";
+  if(!top.length){html+="<div class=\"wordcloud-empty\">Não há palavras-chave na planilha para os filtros atuais.</div></div>";return html;}
+  html+="<div class=\"wordcloud\">";
+  var color=TONES[tone]||TONES.blue;
+  top.forEach(function(it){
+    var ratio=max===min?1:(it.count-min)/(max-min);
+    var size=Math.round(13+ratio*27);
+    var opacity=(0.62+ratio*0.38).toFixed(2);
+    html+="<span class=\"wordcloud-word\" title=\""+it.count+" ocorrência(s)\" style=\"font-size:"+size+"px;color:"+color+";opacity:"+opacity+"\">"+escHtml(it.word)+"</span>";
+  });
+  html+="</div></div>";return html;
+}
+function renderWordTable(words){
+  var top=words.slice(0,30);
+  if(!top.length)return "<div class=\"wordcloud-empty\" style=\"padding:40px\">Nenhuma palavra encontrada com os filtros atuais.</div>";
+  var total=words.reduce(function(a,b){return a+b.count;},0);
+  var h="<table class=\"word-table\"><thead><tr><th>#</th><th>Palavra-chave</th><th>Ocorrências</th><th>%</th></tr></thead><tbody>";
+  top.forEach(function(it,i){h+="<tr><td>"+(i+1)+"</td><td><strong>"+escHtml(it.word)+"</strong></td><td>"+fmtNum(it.count)+"</td><td>"+fmtPct(it.count,total)+"</td></tr>";});
+  return h+"</tbody></table>";
+}
+
+function renderPremissas(){
+  var panel=el("panel-premissas");
+  if(panel.getAttribute("data-rendered")==="1")return;
+  var html="";
+
+  html+="<div class=\"premissa-section\">";
+  html+="<h3>Indicadores Gerais</h3>";
+  html+="<ul class=\"premissa-list\">";
+  html+="<li><strong>Total:</strong> Contagem total de registros (reclamações) na base de dados.</li>";
+  html+="<li><strong>Respondidos:</strong> Registros onde o campo <code>Respondido?</code> = \"Sim\".</li>";
+  html+="<li><strong>Sem Resposta:</strong> Total - Respondidos.</li>";
+  html+="<li><strong>Avaliados:</strong> Registros que possuem valor no campo <code>Nota</code> (0 a 10).</li>";
+  html+="</ul></div>";
+
+  html+="<div class=\"premissa-section\">";
+  html+="<h3>Consideração do Consumidor</h3>";
+  html+="<ul class=\"premissa-list\"><li><strong>Semana Consideração (AY), Sentimento Consideração (AZ) e Palavra-Chave Consideração (BA):</strong> lidos diretamente da planilha fonte; o dashboard não recalcula nem classifica nada, e a palavra-chave define o balão: cada palavra tem polaridade fixa (positiva, negativa ou neutra; lista na própria aba) e a avaliação entra no balão correspondente, mesmo que o sentimento da coluna AZ seja diferente. Palavra nova, fora da lista, segue o sentimento da coluna AZ.</li><li><strong>Nuvens e análise da aba Palavras das Avaliações:</strong> usam somente essas três colunas. Universo = linhas com Sentimento (AZ) preenchido; palavras-chave separadas por <code>;</code> e agrupadas ignorando maiúscula/minúscula.</li><li><strong>Avaliação Favorável:</strong> Enviado/Aguardando = solicitado; Não Solicitado = não solicitado (usado na aba Análise RA).</li></ul></div>";
+
+  html+="<div class=\"premissa-section\">";
+  html+="<h3>Tempo de Resposta</h3>";
+  html+="<ul class=\"premissa-list\">";
+  html+="<li><strong>Tempo 1ª Resposta:</strong> Campo <code>Tempo 1ª Resp. (público)</code> extraído do HugMe, em MINUTOS.</li>";
+  html+="<li><strong>Dias para Responder:</strong> <code>INT(Data Resposta) - INT(Data Reclamação)</code> = dias corridos (calendário).</li>";
+  html+="<li><strong>Faixas de Resposta:</strong>";
+  html+="<ul>";
+  html+="<li><code>Mesmo dia</code> = 0 dias (respondido no mesmo dia)</li>";
+  html+="<li><code>1 dia</code> = 1 dia corrido</li>";
+  html+="<li><code>2 dias</code> = 2 dias corridos</li>";
+  html+="<li><code>3 dias</code> = 3 dias corridos</li>";
+  html+="<li><code>4+ dias</code> = 4 ou mais dias corridos</li>";
+  html+="<li><code>PENDENTE</code> = sem resposta registrada</li>";
+  html+="</ul></li>";
+  html+="</ul></div>";
+
+  html+="<div class=\"premissa-section\">";
+  html+="<h3>NPS (Net Promoter Score)</h3>";
+  html+="<ul class=\"premissa-list\">";
+  html+="<li><strong>Promotores:</strong> Nota ≥ 9</li>";
+  html+="<li><strong>Neutros:</strong> Nota 7 ou 8</li>";
+  html+="<li><strong>Detratores:</strong> Nota &lt; 7 (0 a 6)</li>";
+  html+="<li><strong>Cálculo:</strong> <code>NPS = (Promotores - Detratores) / Total Avaliados × 100</code></li>";
+  html+="<li>Resultado varia de -100 a +100.</li>";
+  html+="</ul></div>";
+
+  html+="<div class=\"premissa-section\">";
+  html+="<div class=\"premissa-section\">";
+  html+="<h3>Análise Temporal e Avaliações</h3>";
+  html+="<ul class=\"premissa-list\">";
+  html+="<li><strong>Com interação:</strong> tickets com <code>Interações neste ticket &gt; 0</code>.</li>";
+  html+="<li><strong>Fechados + respondidos:</strong> <code>Status HugMe = Fechado</code> e <code>Respondido? = Sim</code>.</li>";
+  html+="<li><strong>Avaliados:</strong> tickets com <code>Nota</code> preenchida.</li>";
+  html+="<li><strong>Média avaliação:</strong> média das notas preenchidas, escala 0 a 10.</li>";
+  html+="</ul></div>";
+
+  html+="<h3>Nota Média</h3>";
+  html+="<ul class=\"premissa-list\">";
+  html+="<li>Média aritmética do campo <code>Nota</code> (escala 0-10).</li>";
+  html+="<li>Apenas registros com nota preenchida são considerados.</li>";
+  html+="</ul></div>";
+
+  html+="<div class=\"premissa-section\">";
+  html+="<h3>CSAT</h3>";
+  html+="<ul class=\"premissa-list\">";
+  html+="<li><strong>Resolvido:</strong> Campo <code>Seu problema foi resolvido?</code> com respostas \"Sim\" ou \"Não\".</li>";
+  html+="<li><strong>Voltaria:</strong> Campo <code>Voltaria a fazer negócio?</code> com respostas \"Sim\" ou \"Não\".</li>";
+  html+="<li>Registros sem avaliação (campo vazio) não são contabilizados nesses indicadores.</li>";
+  html+="</ul></div>";
+
+  html+="<div class=\"premissa-section\">";
+  html+="<h3>Produtividade</h3>";
+  html+="<ul class=\"premissa-list\">";
+  html+="<li>Volume agrupado por agente (campo <code>Atribuído Para</code>).</li>";
+  html+="<li><strong>Taxa de Resposta:</strong> Respondidos / Total por agente × 100.</li>";
+  html+="<li><strong>Nota Média por Agente:</strong> Média das notas atribuídas aos tickets de cada agente.</li>";
+  html+="<li>Tabelas diárias e semanais incluem coluna de nota média por agente.</li>";
+  html+="</ul></div>";
+
+  html+="<div class=\"premissa-section\">";
+  html+="<h3>Fonte dos Dados</h3>";
+  html+="<ul class=\"premissa-list\">";
+  html+="<li>Os dados são extraídos da plataforma <strong>HugMe / Reclame Aqui</strong>.</li>";
+  html+="<li>A planilha fonte é o Google Sheets <strong>CSV Para Dash HTM RA</strong> (aba BASE): <a href=\"https://docs.google.com/spreadsheets/d/1Ho7c6K0ijAaHOQRwyi2WQZd3MsuQeE5QrJOjoqMpSSg/edit\" target=\"_blank\" rel=\"noopener\" style=\"color:#2563eb\">abrir planilha</a></li>";
+  html+="<li>Ao abrir, o dashboard lê a planilha publicada (CSV) e mostra sempre a versão mais recente. Se a leitura não for possível, usa a base embutida no arquivo (posição de <strong>"+EMBEDDED_SNAPSHOT+"</strong>).</li>";
+  html+="<li>Os dados podem ser atualizados via aba <strong>Base</strong>, carregando CSV ou colando dados com cabeçalhos.</li>";
+  html+="</ul></div>";
+
+  panel.innerHTML=html;
+  panel.setAttribute("data-rendered","1");
+}
+
+/* ========== MODAL SYSTEM ========== */
+function openModal(html){
+  el("modal-content").innerHTML=html;
+  el("modal-overlay").className="modal-overlay active";
+}
+
+function closeModal(){
+  el("modal-content").style.maxWidth="";
+  el("modal-overlay").className="modal-overlay";
+  el("modal-content").innerHTML="";
+}
+
+// Close on overlay click
+document.addEventListener("click",function(e){
+  if(e.target&&e.target.id==="modal-overlay")closeModal();
+});
+
+// Close on Escape
+document.addEventListener("keydown",function(e){
+  if(e.keyCode===27)closeModal();
+});
+
+/* ========== KPI MODAL ========== */
+function openKPIModal(){
+  var d=filtered;
+  var total=d.length;
+  var respondidos=0,avaliados=0,notaSum=0,notaCount=0,promotores=0,detratores=0;
+  var rvSim=0,rvNao=0,vnSim=0,vnNao=0;
+  var tpVals=[];
+  var mesmoDia=0,pendentes=0;
+
+  for(var i=0;i<d.length;i++){
+    if(d[i].rp==="Sim")respondidos++;
+    var nota=parseFloat(d[i].n);
+    if(!isNaN(nota)&&d[i].n!==""){
+      avaliados++;notaSum+=nota;notaCount++;
+      if(nota>=9)promotores++;
+      else if(nota<7)detratores++;
+    }
+    if(d[i].rv==="Sim")rvSim++;
+    else if(d[i].rv==="Não")rvNao++;
+    if(d[i].vn==="Sim")vnSim++;
+    else if(d[i].vn==="Não")vnNao++;
+    var tp=parseFloat(d[i].tp);
+    if(!isNaN(tp)&&d[i].tp!=="")tpVals.push(tp);
+    var fx=classifyFaixa(d[i].fx);
+    if(fx==="Mesmo dia")mesmoDia++;
+    if(fx==="PENDENTE")pendentes++;
+  }
+  var notaMedia=notaCount>0?(notaSum/notaCount):0;
+  var nps=avaliados>0?Math.round((promotores-detratores)/avaliados*100):0;
+  var tempMed=tpVals.length>0?(tpVals.reduce(function(a,b){return a+b},0)/tpVals.length):0;
+
+  var html="<div class=\"modal-header\">";
+  html+="<span class=\"modal-title\">Resumo de KPIs</span>";
+  html+="<button class=\"modal-close\" onclick=\"closeModal()\">&times;</button>";
+  html+="</div>";
+
+  html+="<table class=\"data-table\">";
+  html+="<thead><tr><th>Indicador</th><th>Valor</th><th>Detalhe</th></tr></thead><tbody>";
+
+  var kpis=[
+    ["Total Reclamações",fmtNum(total),""],
+    ["Respondidos",fmtNum(respondidos),fmtPct(respondidos,total)],
+    ["Sem Resposta",fmtNum(total-respondidos),fmtPct(total-respondidos,total)],
+    ["Avaliados",fmtNum(avaliados),fmtPct(avaliados,total)],
+    ["Nota Média",(Math.round(notaMedia*10)/10).toFixed(1),"escala 0-10"],
+    ["NPS",nps+"","promotores - detratores"],
+    ["Tempo Médio 1ª Resp",Math.round(tempMed)+" min",(tempMed/60).toFixed(1)+"h"],
+    ["Mesmo Dia",fmtNum(mesmoDia),fmtPct(mesmoDia,total)],
+    ["Pendentes",fmtNum(pendentes),fmtPct(pendentes,total)],
+    ["Resolvido Sim",fmtNum(rvSim),fmtPct(rvSim,rvSim+rvNao)],
+    ["Resolvido Não",fmtNum(rvNao),fmtPct(rvNao,rvSim+rvNao)],
+    ["Voltaria Sim",fmtNum(vnSim),fmtPct(vnSim,vnSim+vnNao)],
+    ["Voltaria Não",fmtNum(vnNao),fmtPct(vnNao,vnSim+vnNao)]
+  ];
+
+  // Agent breakdown
+  var agents=uniqueVals(d,"ag");
+  for(var a=0;a<agents.length;a++){
+    var ag=agents[a];
+    var cnt=0,resp=0,nS=0,nC=0;
+    for(var i=0;i<d.length;i++){
+      if(d[i].ag===ag){
+        cnt++;
+        if(d[i].rp==="Sim")resp++;
+        var nt=parseFloat(d[i].n);
+        if(!isNaN(nt)&&d[i].n!==""){nS+=nt;nC++;}
+      }
+    }
+    var ntM=nC>0?(Math.round(nS/nC*10)/10).toFixed(1):"-";
+    kpis.push([ag,fmtNum(cnt)+" tickets","Resp: "+fmtNum(resp)+" | Taxa: "+fmtPct(resp,cnt)+" | Nota: "+ntM]);
+  }
+
+  for(var i=0;i<kpis.length;i++){
+    html+="<tr><td><strong>"+escHtml(kpis[i][0])+"</strong></td><td>"+escHtml(kpis[i][1])+"</td><td>"+escHtml(kpis[i][2])+"</td></tr>";
+  }
+  html+="</tbody></table>";
+  openModal(html);
+}
+
+/* ========== EDIT MODAL ========== */
+function openEditModal(cardId){
+  var card=_cards[cardId];
+  if(!card)return;
+
+  var html="<div class=\"modal-header\">";
+  html+="<span class=\"modal-title\">Editar: "+escHtml(card.title)+"</span>";
+  html+="<button class=\"modal-close\" onclick=\"closeModal()\">&times;</button>";
+  html+="</div>";
+
+  if(card.type==="bar"||card.type==="donut"){
+    html+="<div style=\"margin-bottom:12px\"><label style=\"font-weight:600\">Cor: </label><input type=\"color\" id=\"edit-color\" value=\""+(card.color||COLORS.blue)+"\"></div>";
+    html+="<table class=\"edit-table\"><thead><tr><th>Rótulo</th><th>Valor</th></tr></thead><tbody>";
+    var items=card.items||[];
+    for(var i=0;i<items.length;i++){
+      html+="<tr>";
+      html+="<td><input type=\"text\" id=\"edit-lbl-"+i+"\" value=\""+escHtml(items[i].label)+"\"></td>";
+      html+="<td><input type=\"number\" id=\"edit-val-"+i+"\" value=\""+items[i].value+"\" step=\"any\"></td>";
+      html+="</tr>";
+    }
+    html+="</tbody></table>";
+    html+="<input type=\"hidden\" id=\"edit-card-id\" value=\""+cardId+"\">";
+    html+="<input type=\"hidden\" id=\"edit-count\" value=\""+items.length+"\">";
+    html+="<button class=\"btn-apply\" onclick=\"applyEdit()\">Aplicar</button>";
+  } else if(card.type==="stacked"){
+    html+="<p style=\"color:#475569\">Dados do gráfico empilhado:</p>";
+    html+="<table class=\"edit-table\"><thead><tr><th>Grupo</th>";
+    var cats=card.cats||[];
+    for(var j=0;j<cats.length;j++)html+="<th>"+escHtml(cats[j])+"</th>";
+    html+="</tr></thead><tbody>";
+    var groups=card.groups||[];
+    for(var i=0;i<groups.length;i++){
+      html+="<tr><td>"+escHtml(groups[i].label)+"</td>";
+      for(var j=0;j<cats.length;j++){
+        html+="<td><input type=\"number\" id=\"edit-sg-"+i+"-"+j+"\" value=\""+(groups[i].values[cats[j]]||0)+"\"></td>";
+      }
+      html+="</tr>";
+    }
+    html+="</tbody></table>";
+    html+="<input type=\"hidden\" id=\"edit-card-id\" value=\""+cardId+"\">";
+    html+="<input type=\"hidden\" id=\"edit-sg-rows\" value=\""+groups.length+"\">";
+    html+="<input type=\"hidden\" id=\"edit-sg-cols\" value=\""+cats.length+"\">";
+    html+="<button class=\"btn-apply\" onclick=\"applyEditStacked()\">Aplicar</button>";
+  } else if(card.type==="table"){
+    html+="<p style=\"color:#475569\">Dados da tabela (somente leitura no modal).</p>";
+    html+="<div class=\"table-scroll\" style=\"max-height:400px\"><table class=\"edit-table\"><thead><tr>";
+    var headers=card.headers||[];
+    for(var j=0;j<headers.length;j++)html+="<th>"+escHtml(headers[j])+"</th>";
+    html+="</tr></thead><tbody>";
+    var rows=card.rows||[];
+    for(var i=0;i<Math.min(rows.length,50);i++){
+      html+="<tr>";
+      for(var j=0;j<rows[i].length;j++){
+        html+="<td>"+escHtml(String(rows[i][j]!=null?rows[i][j]:""))+"</td>";
+      }
+      html+="</tr>";
+    }
+    html+="</tbody></table></div>";
+  }
+
+  openModal(html);
+}
+
+function applyEdit(){
+  var cardId=el("edit-card-id").value;
+  var count=parseInt(el("edit-count").value);
+  var color=el("edit-color").value;
+  var card=_cards[cardId];
+  if(!card)return;
+  var newItems=[];
+  for(var i=0;i<count;i++){
+    var lbl=el("edit-lbl-"+i).value;
+    var val=parseFloat(el("edit-val-"+i).value)||0;
+    newItems.push({label:lbl,value:val});
+  }
+  card.items=newItems;
+  card.color=color;
+  var bodyId="body-"+cardId;
+  renderBarChart(bodyId,newItems,{color:color,title:card.title});
+  closeModal();
+}
+
+function applyEditStacked(){
+  var cardId=el("edit-card-id").value;
+  var rows=parseInt(el("edit-sg-rows").value);
+  var cols=parseInt(el("edit-sg-cols").value);
+  var card=_cards[cardId];
+  if(!card)return;
+  var groups=card.groups;
+  var cats=card.cats;
+  for(var i=0;i<rows;i++){
+    for(var j=0;j<cols;j++){
+      var inp=el("edit-sg-"+i+"-"+j);
+      if(inp)groups[i].values[cats[j]]=parseFloat(inp.value)||0;
+    }
+  }
+  var bodyId="body-"+cardId;
+  renderStackedBar(bodyId,groups,cats,card.colors,{title:card.title});
+  closeModal();
+}
+
+/* ========== EXPORT ========== */
+function exportCardCSV(cardId){
+  var card=_cards[cardId];
+  if(!card)return;
+  var csv="";
+  if(card.type==="bar"||card.type==="donut"){
+    csv="Rótulo;Valor\n";
+    var items=card.items||[];
+    for(var i=0;i<items.length;i++){
+      csv+='"'+items[i].label.replace(/"/g,'""')+'";'+items[i].value+"\n";
+    }
+  } else if(card.type==="table"){
+    var headers=card.headers||[];
+    csv=headers.join(";")+"\n";
+    var rows=card.rows||[];
+    for(var i=0;i<rows.length;i++){
+      var cells=[];
+      for(var j=0;j<rows[i].length;j++){
+        var v=rows[i][j]!=null?String(rows[i][j]):"";
+        cells.push('"'+v.replace(/"/g,'""')+'"');
+      }
+      csv+=cells.join(";")+"\n";
+    }
+  } else if(card.type==="stacked"){
+    var cats=card.cats||[];
+    csv="Grupo;"+cats.join(";")+"\n";
+    var groups=card.groups||[];
+    for(var i=0;i<groups.length;i++){
+      var vals=['"'+groups[i].label.replace(/"/g,'""')+'"'];
+      for(var j=0;j<cats.length;j++){
+        vals.push(groups[i].values[cats[j]]||0);
+      }
+      csv+=vals.join(";")+"\n";
+    }
+  }
+  if(!csv)return;
+  var blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
+  var url=URL.createObjectURL(blob);
+  var a=ce("a");
+  a.href=url;
+  a.download=(card.title||cardId).replace(/[^a-zA-Z0-9À-ÿ ]/g,"")+"_export.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function copyCardData(cardId){
+  var card=_cards[cardId];
+  if(!card)return;
+  var text="";
+  if(card.type==="bar"||card.type==="donut"){
+    text="Rótulo\tValor\n";
+    var items=card.items||[];
+    for(var i=0;i<items.length;i++){
+      text+=items[i].label+"\t"+items[i].value+"\n";
+    }
+  } else if(card.type==="table"){
+    var headers=card.headers||[];
+    text=headers.join("\t")+"\n";
+    var rows=card.rows||[];
+    for(var i=0;i<rows.length;i++){
+      var cells=[];
+      for(var j=0;j<rows[i].length;j++){
+        cells.push(rows[i][j]!=null?String(rows[i][j]):"");
+      }
+      text+=cells.join("\t")+"\n";
+    }
+  } else if(card.type==="stacked"){
+    var cats=card.cats||[];
+    text="Grupo\t"+cats.join("\t")+"\n";
+    var groups=card.groups||[];
+    for(var i=0;i<groups.length;i++){
+      var vals=[groups[i].label];
+      for(var j=0;j<cats.length;j++){
+        vals.push(groups[i].values[cats[j]]||0);
+      }
+      text+=vals.join("\t")+"\n";
+    }
+  }
+  if(!text)return;
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text);
+  } else {
+    var ta=ce("textarea");
+    ta.value=text;
+    ta.style.position="fixed";
+    ta.style.left="-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+  }
+  // Visual feedback
+  var btn=document.querySelector("#card-"+cardId+" .card-action:last-child");
+  if(btn){
+    var orig=btn.innerHTML;
+    btn.innerHTML="&#10004;";
+    setTimeout(function(){btn.innerHTML=orig},1500);
+  }
+}
+
+/* ========== INIT ========== */
+function init(){
+  buildFilters();
+  buildTabs();
+  renderActiveTab();
+  renderFrozen();
+}
+
+/* ===== FREEZE / CONGELAR ===== */
+var FROZEN_EMBEDDED = []; /*END_FROZEN*/
+function frozenId(s){return (s.dt||"")+"|"+(s.lb||"")+"|"+(s.total||0);}
+function saveFrozen(){
+  try{localStorage.setItem("kra_frozen",JSON.stringify(FROZEN.filter(function(s){return !s._emb;})));return true;}
+  catch(e){alert("Sem espaço no navegador para guardar este congelamento. Use '🚀 Gerar HTML' para gravar os congelados dentro do arquivo e depois remova os antigos daqui.");return false;}
+}
+var FROZEN = (function(){
+  var loc=[];try{loc=JSON.parse(localStorage.getItem("kra_frozen")||"[]");}catch(e){}
+  var seen={},out=[];
+  FROZEN_EMBEDDED.forEach(function(s){s._emb=1;seen[frozenId(s)]=1;out.push(s);});
+  loc.forEach(function(s){var k=frozenId(s);if(!seen[k]){seen[k]=1;out.push(s);}});
+  return out;
+})();
+var BASE_HEADERS=[["d","Data Reclamação"],["sh","Status Hugme"],["sr","Status RA"],["c","Cidade"],["e","Estado"],["t","Tags"],["dr","Data de Resposta"],["i","Interações neste ticket"],["rv","Seu problema foi resolvido?"],["vn","Voltaria a fazer negócio?"],["n","Nota"],["tp","Tempo 1ª Resp. (público)"],["ag","Atribuído Para"],["sem","Semana Criação"],["ds","Dia da Semana"],["ma","Mês/Ano"],["mt","Motivo Consolidado"],["rp","Respondido?"],["hp","Horas Sem Resposta"],["dp","Dias p/ Responder"],["fx","Faixa Resposta"],["nm","Nome"],["tx","Texto da Reclamação"],["da","Data Avaliação"],["af","Avaliação Favorável"],["dc","Data Consideração Consumidor"],["cc","Consideração Consumidor"],["sc","Semana Consideração"],["sent","Sentimento Consideração"],["kw","Palavra-Chave Consideração"]];
+function downloadBlob(content,name,type){
+  var blob=new Blob([content],{type:type});var url=URL.createObjectURL(blob);var a=document.createElement("a");
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url);},1000);
+}
+function downloadBaseCSV(rows,label){
+  var q=function(v){return '"'+String(v==null?"":v).replace(/"/g,'""')+'"';};
+  var csv="\uFEFF"+BASE_HEADERS.map(function(h){return q(h[1]);}).join(";")+"\n";
+  rows.forEach(function(r){csv+=BASE_HEADERS.map(function(h){return q(r[h[0]]);}).join(";")+"\n";});
+  downloadBlob(csv,"base_congelada_"+String(label).replace(/[^\w\-]+/g,"_")+".csv","text/csv;charset=utf-8");
+}
+function captureAllTabs(){
+  var ids=["analise","tempo","prod","csat","duplic","evolucao","palavras","atendimento"],out=[],prev=activeTab;
+  ids.forEach(function(id){
+    var tb=TABS.filter(function(x){return x.id===id;})[0];if(!tb)return;
+    try{
+      activeTab=id;renderActiveTab();
+      var tmp=document.createElement("div");tmp.innerHTML=el("panel-"+id).innerHTML;
+      tmp.querySelectorAll(".card-actions").forEach(function(n){n.parentNode.removeChild(n);});
+      tmp.querySelectorAll("[onclick]").forEach(function(n){n.removeAttribute("onclick");});
+      out.push({id:id,lb:tb.label,html:tmp.innerHTML});
+    }catch(e){console.error("captura "+id,e);}
+  });
+  activeTab=prev;renderActiveTab();
+  return out;
+}
+
+function freezeSnapshot() {
+  var d = filtered;
+  var total = d.length;
+  var resp = d.filter(function(r){return r.rp==="Sim";}).length;
+  var semR = total - resp;
+  var cn = d.filter(function(r){return r.n && r.n!=="";});
+  var notas = cn.map(function(r){return parseFloat(r.n)||0;});
+  var avgN = notas.length ? (notas.reduce(function(a,b){return a+b;},0)/notas.length).toFixed(1) : "-";
+  var cd = d.filter(function(r){return r.dp && r.dp!=="";});
+  var dias = cd.map(function(r){return parseInt(r.dp)||0;});
+  var avgD = dias.length ? (dias.reduce(function(a,b){return a+b;},0)/dias.length).toFixed(1) : "-";
+  var d0 = cd.filter(function(r){return parseInt(r.dp)===0;}).length;
+  var d1 = cd.filter(function(r){return parseInt(r.dp)===1;}).length;
+  var d2 = cd.filter(function(r){return parseInt(r.dp)===2;}).length;
+  var d3 = cd.filter(function(r){return parseInt(r.dp)===3;}).length;
+  var gt3 = cd.filter(function(r){return parseInt(r.dp)>3;}).length;
+  var prom = notas.filter(function(n){return n>=9;}).length;
+  var neut = notas.filter(function(n){return n>=7&&n<9;}).length;
+  var det = notas.filter(function(n){return n<7;}).length;
+  var nps = notas.length ? Math.round((prom-det)/notas.length*100) : "-";
+  var rS=d.filter(function(r){return r.rv==="Sim";}).length;
+  var rN=d.filter(function(r){return r.rv==="Não";}).length;
+  var vS=d.filter(function(r){return r.vn==="Sim";}).length;
+  var vN=d.filter(function(r){return r.vn==="Não";}).length;
+  // Status RA
+  var sra={};d.forEach(function(r){var v=r.sr||"?";sra[v]=(sra[v]||0)+1;});
+  var sraStr="";for(var k in sra)sraStr+=k+": "+sra[k]+"\n";
+  // Status HugMe
+  var shm={};d.forEach(function(r){var v=r.sh||"?";shm[v]=(shm[v]||0)+1;});
+  var shmStr="";for(var k2 in shm)shmStr+=k2+": "+shm[k2]+"\n";
+  // Top motivos
+  var mot={};d.forEach(function(r){var v=r.mt||"?";mot[v]=(mot[v]||0)+1;});
+  var motArr=[];for(var k3 in mot)motArr.push([k3,mot[k3]]);
+  motArr.sort(function(a,b){return b[1]-a[1];});
+  var motStr="";for(var m=0;m<Math.min(10,motArr.length);m++)motStr+=motArr[m][0]+": "+motArr[m][1]+"\n";
+  // Top estados
+  var est={};d.forEach(function(r){var v=r.e||"?";est[v]=(est[v]||0)+1;});
+  var estArr=[];for(var k4 in est)estArr.push([k4,est[k4]]);
+  estArr.sort(function(a,b){return b[1]-a[1];});
+  var estStr="";for(var e2=0;e2<Math.min(10,estArr.length);e2++)estStr+=estArr[e2][0]+": "+estArr[e2][1]+"\n";
+  // Agentes completo
+  var agentes = {};
+  d.forEach(function(r){
+    var ag = r.ag || "(N/A)";
+    if(!agentes[ag]) agentes[ag]={t:0,r:0,d0:0,gt3:0,ns:[],pend:0};
+    agentes[ag].t++;
+    if(r.rp==="Sim") agentes[ag].r++;
+    if(r.dp!==""&&parseInt(r.dp)===0) agentes[ag].d0++;
+    if(r.dp!==""&&parseInt(r.dp)>3) agentes[ag].gt3++;
+    if(r.rp==="Não") agentes[ag].pend++;
+    if(r.n && r.n!=="") agentes[ag].ns.push(parseFloat(r.n)||0);
+  });
+  var agArr=[];
+  for(var ka in agentes){
+    var a=agentes[ka];
+    var an=a.ns.length?(a.ns.reduce(function(x,y){return x+y;},0)/a.ns.length).toFixed(1):"-";
+    agArr.push({nm:ka,t:a.t,r:a.r,d0:a.d0,gt3:a.gt3,pend:a.pend,nota:an,taxa:a.t?(a.r/a.t*100).toFixed(0):0});
+  }
+  // Notas por motivo (analise)
+  var notaMot={};
+  cn.forEach(function(r){
+    var m2=r.mt||"?";
+    if(!notaMot[m2])notaMot[m2]={ns:[],t:0};
+    notaMot[m2].ns.push(parseFloat(r.n)||0);
+    notaMot[m2].t++;
+  });
+  var notaMotArr=[];
+  for(var km in notaMot){
+    var nm2=notaMot[km];
+    var avg2=nm2.ns.reduce(function(a2,b2){return a2+b2;},0)/nm2.ns.length;
+    notaMotArr.push({mot:km,avg:avg2.toFixed(1),cnt:nm2.t});
+  }
+  notaMotArr.sort(function(a3,b3){return parseFloat(a3.avg)-parseFloat(b3.avg);});
+
+  var label = prompt("Nome do snapshot (ex: Sem 35, Ago/2026):");
+  if(!label) return;
+  var tabsHtml=captureAllTabs();
+  FROZEN.push({
+    lb:label, dt:new Date().toISOString().split("T")[0],
+    total:total, resp:resp, sem:semR,
+    d0:d0, d1:d1, d2:d2, d3:d3, gt3:gt3,
+    avgD:avgD, avgN:avgN, nps:nps,
+    prom:prom, neut:neut, det:det,
+    rS:rS, rN:rN, vS:vS, vN:vN,
+    sra:sraStr, shm:shmStr, mot:motStr, est:estStr,
+    ag:agArr, notaMot:notaMotArr, nrows:d.length, tabs:tabsHtml
+  });
+  var okSave=saveFrozen();
+  renderFrozen();
+  alert("Snapshot \""+label+"\" congelado com TODOS os resultados de TODAS as abas ("+tabsHtml.length+" abas, "+fmtNum(d.length)+" registros)."+(okSave?"":"\n(não ficou salvo no navegador)"));
+  if(confirm("Baixar também a base (CSV) deste congelamento, com os "+fmtNum(d.length)+" registros?"))downloadBaseCSV(d,label);
+}
+
+function renderFrozen() {
+  var el2 = document.getElementById("frozen-area");
+  if(!FROZEN.length){el2.innerHTML="";return;}
+  var h = "<div style='background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 16px;margin-bottom:12px'>";
+  h += "<div style='font-weight:700;color:#d97706;margin-bottom:8px;font-size:13px'>&#128274; Historico Congelado (clique no nome para ver todos os resultados)</div>";
+  for(var i=0;i<FROZEN.length;i++){
+    var s=FROZEN[i];
+    h+="<div style='display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:6px 8px;background:#fff;border-radius:5px;margin-bottom:4px;font-size:12px'>";
+    h+="<a href='#' onclick='showFrozenDetail("+i+");return false;' style='font-weight:700;min-width:120px;color:#2563eb;text-decoration:underline;cursor:pointer'>"+escHtml(s.lb)+"</a>";
+    h+="<span style='color:#9ca3af;font-size:10px'>"+s.dt+"</span>";
+    h+="<span><b>Total:</b> "+s.total+"</span>";
+    h+="<span><b>Resp:</b> "+s.resp+"</span>";
+    h+="<span style='color:#dc2626'><b>S/Resp:</b> "+s.sem+"</span>";
+    h+="<span><b>Nota:</b> "+s.avgN+"</span>";
+    h+="<span><b>NPS:</b> "+s.nps+"</span>";
+    h+="<button onclick='removeFrozen("+i+")' style='padding:1px 6px;border:1px solid #dc2626;background:#fef2f2;color:#dc2626;border-radius:3px;cursor:pointer;font-size:9px'>&#10005;</button>";
+    h+="</div>";
+  }
+  h+="</div>";
+  el2.innerHTML=h;
+}
+
+function showFrozenDetail(idx) {
+  var s=FROZEN[idx];
+  var h="<div style='max-width:900px;max-height:80vh;overflow-y:auto'>";
+  h+="<h2 style='margin:0 0 4px;font-size:18px'>&#128274; "+escHtml(s.lb)+"</h2>";
+  h+="<p style='color:#6b7280;font-size:11px;margin-bottom:12px'>Congelado em: "+s.dt+"</p>";
+
+  // === ABA: ANALISE RA ===
+  h+="<div style='background:#eff6ff;border-radius:8px;padding:12px;margin-bottom:12px'>";
+  h+="<h3 style='margin:0 0 8px;font-size:14px;color:#2563eb'>&#128203; Analise RA</h3>";
+  h+="<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin-bottom:8px'>";
+  var kpis=[["Total",s.total],["Respondidos",s.resp],["Sem Resp.",s.sem],["Nota Media",s.avgN],["NPS",s.nps]];
+  for(var i=0;i<kpis.length;i++){
+    h+="<div style='background:#fff;border-radius:5px;padding:6px;text-align:center'>";
+    h+="<div style='font-size:8px;color:#6b7280;text-transform:uppercase'>"+kpis[i][0]+"</div>";
+    h+="<div style='font-size:18px;font-weight:700'>"+kpis[i][1]+"</div></div>";
+  }
+  h+="</div>";
+  // NPS Detail
+  h+="<div style='font-size:11px;margin-bottom:6px'><b>NPS Detalhado:</b> Promotores(9-10): <span style='color:#059669;font-weight:700'>"+s.prom+"</span> | Neutros(7-8): <span style='color:#d97706;font-weight:700'>"+s.neut+"</span> | Detratores(0-6): <span style='color:#dc2626;font-weight:700'>"+s.det+"</span></div>";
+  // CSAT
+  h+="<div style='font-size:11px;margin-bottom:6px'><b>Resolvido:</b> Sim="+s.rS+" | Não="+s.rN+" &nbsp; <b>Voltaria:</b> Sim="+s.vS+" | Não="+s.vN+"</div>";
+  // Status
+  if(s.sra){h+="<details style='font-size:11px;margin-bottom:4px'><summary style='cursor:pointer;font-weight:600'>Status RA</summary><pre style='background:#f7f8fa;padding:6px;border-radius:4px;font-size:10px;white-space:pre-wrap;margin:4px 0'>"+escHtml(s.sra)+"</pre></details>";}
+  if(s.shm){h+="<details style='font-size:11px;margin-bottom:4px'><summary style='cursor:pointer;font-weight:600'>Status HugMe</summary><pre style='background:#f7f8fa;padding:6px;border-radius:4px;font-size:10px;white-space:pre-wrap;margin:4px 0'>"+escHtml(s.shm)+"</pre></details>";}
+  if(s.mot){h+="<details style='font-size:11px;margin-bottom:4px'><summary style='cursor:pointer;font-weight:600'>Top 10 Motivos</summary><pre style='background:#f7f8fa;padding:6px;border-radius:4px;font-size:10px;white-space:pre-wrap;margin:4px 0'>"+escHtml(s.mot)+"</pre></details>";}
+  if(s.est){h+="<details style='font-size:11px'><summary style='cursor:pointer;font-weight:600'>Top 10 Estados</summary><pre style='background:#f7f8fa;padding:6px;border-radius:4px;font-size:10px;white-space:pre-wrap;margin:4px 0'>"+escHtml(s.est)+"</pre></details>";}
+  h+="</div>";
+
+  // === ABA: TEMPO DE RESPOSTA ===
+  h+="<div style='background:#ecfdf5;border-radius:8px;padding:12px;margin-bottom:12px'>";
+  h+="<h3 style='margin:0 0 8px;font-size:14px;color:#059669'>&#9201; Tempo de Resposta</h3>";
+  h+="<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:6px'>";
+  var tp=[["Media(d)",s.avgD],["Mesmo Dia",s.d0],["1 Dia",s.d1],["2 Dias",s.d2],["3 Dias",s.d3],[">3 Dias",s.gt3],["Pendentes",s.sem]];
+  for(var j=0;j<tp.length;j++){
+    var clr=j===0?"#1a1a1a":j>=5?"#dc2626":j===1?"#059669":"#2563eb";
+    h+="<div style='background:#fff;border-radius:5px;padding:6px;text-align:center'>";
+    h+="<div style='font-size:8px;color:#6b7280;text-transform:uppercase'>"+tp[j][0]+"</div>";
+    h+="<div style='font-size:16px;font-weight:700;color:"+clr+"'>"+tp[j][1]+"</div></div>";
+  }
+  h+="</div></div>";
+
+  // === ABA: PRODUTIVIDADE ===
+  h+="<div style='background:#f5f3ff;border-radius:8px;padding:12px;margin-bottom:12px'>";
+  h+="<h3 style='margin:0 0 8px;font-size:14px;color:#7c3aed'>&#128105;&#8205;&#128187; Produtividade por Agente</h3>";
+  if(s.ag&&s.ag.length){
+    h+="<table style='width:100%;border-collapse:collapse;font-size:11px'>";
+    h+="<tr style='background:#e9e5ff'><th style='padding:4px 6px;text-align:left'>Agente</th><th>Total</th><th>Resp.</th><th>Taxa</th><th>MsmDia</th><th>&gt;3d</th><th>Pend.</th><th>Nota</th></tr>";
+    for(var k5=0;k5<s.ag.length;k5++){
+      var ag2=s.ag[k5];
+      h+="<tr style='border-bottom:1px solid #e2e8f0'><td style='padding:3px 6px;font-weight:600'>"+escHtml(ag2.nm)+"</td>";
+      h+="<td style='text-align:center'>"+ag2.t+"</td>";
+      h+="<td style='text-align:center'>"+ag2.r+"</td>";
+      h+="<td style='text-align:center'>"+ag2.taxa+"%</td>";
+      h+="<td style='text-align:center;color:#059669'>"+ag2.d0+"</td>";
+      h+="<td style='text-align:center;color:#dc2626'>"+(ag2.gt3||0)+"</td>";
+      h+="<td style='text-align:center;color:#d97706'>"+(ag2.pend||0)+"</td>";
+      h+="<td style='text-align:center;font-weight:700'>"+ag2.nota+"</td></tr>";
+    }
+    h+="</table>";
+  }
+  h+="</div>";
+
+  // === ABA: ANALISE DE NOTAS ===
+  h+="<div style='background:#fef2f2;border-radius:8px;padding:12px;margin-bottom:12px'>";
+  h+="<h3 style='margin:0 0 8px;font-size:14px;color:#dc2626'>&#128200; Analise de Notas por Motivo (pior para melhor)</h3>";
+  if(s.notaMot&&s.notaMot.length){
+    h+="<table style='width:100%;border-collapse:collapse;font-size:11px'>";
+    h+="<tr style='background:#fde8e8'><th style='padding:4px 6px;text-align:left'>Motivo</th><th>Nota Media</th><th>Qtd Avaliados</th><th>Diagnostico</th></tr>";
+    for(var nm3=0;nm3<s.notaMot.length;nm3++){
+      var item=s.notaMot[nm3];
+      var diag=parseFloat(item.avg)<5?"Critico - acao urgente":parseFloat(item.avg)<7?"Baixo - precisa melhorar":"OK";
+      var dc=parseFloat(item.avg)<5?"#dc2626":parseFloat(item.avg)<7?"#d97706":"#059669";
+      h+="<tr style='border-bottom:1px solid #f0e0e0'><td style='padding:3px 6px'>"+escHtml(item.mot)+"</td>";
+      h+="<td style='text-align:center;font-weight:700;color:"+dc+"'>"+item.avg+"</td>";
+      h+="<td style='text-align:center'>"+item.cnt+"</td>";
+      h+="<td style='text-align:center;color:"+dc+";font-size:10px'>"+diag+"</td></tr>";
+    }
+    h+="</table>";
+  }
+  h+="</div>";
+
+  if(s.tabs&&s.tabs.length)h+="<button onclick='showFrozenTabs("+idx+")' style='margin:8px 8px 0 0;padding:8px 20px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600'>&#128209; Ver todas as abas congeladas</button>";
+  h+="<button onclick='closeModal()' style='margin-top:8px;padding:8px 20px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600'>Fechar</button>";
+  h+="</div>";
+  openModal(h);
+}
+
+function showFrozenTabs(idx){
+  var s=FROZEN[idx];if(!s||!s.tabs)return;
+  var h="<h2 style='margin:0 0 4px;font-size:18px'>&#128274; "+escHtml(s.lb)+" — todas as abas</h2><p style='color:#6b7280;font-size:11px;margin-bottom:12px'>Congelado em "+s.dt+" · "+fmtNum(s.nrows||s.total)+" registros</p>";
+  for(var i=0;i<s.tabs.length;i++){
+    h+="<details "+(i===0?"open":"")+" style='margin-bottom:10px;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;background:#f8fafc'><summary style='cursor:pointer;font-weight:700;font-size:14px'>"+escHtml(s.tabs[i].lb)+"</summary><div style='margin-top:10px'>"+s.tabs[i].html+"</div></details>";
+  }
+  h+="<button onclick='closeModal()' style='margin-top:8px;padding:8px 20px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600'>Fechar</button>";
+  openModal(h);el("modal-content").style.maxWidth="1200px";
+}
+function removeFrozen(idx) {
+  if(!confirm("Remover snapshot \""+FROZEN[idx].lb+"\"?"+(FROZEN[idx]._emb?"\n\nEle está gravado no arquivo publicado: para sumir de vez, gere e publique o HTML novamente.":""))) return;
+  FROZEN.splice(idx,1);
+  saveFrozen();
+  renderFrozen();
+}
+
+function buildFrozenHTMLContent(){
+  var h="<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Snapshots Congelados</title>";
+  h+="<style>body{font-family:Inter,-apple-system,sans-serif;padding:20px;color:#1a1a1a;max-width:900px;margin:0 auto}";
+  h+="h1{color:#1e3a5f;border-bottom:2px solid #2563eb;padding-bottom:8px}";
+  h+="h2{color:#2563eb;margin-top:24px}h3{color:#059669;margin-top:16px}";
+  h+=".section{background:#f7f8fa;border-radius:8px;padding:12px 16px;margin-bottom:16px;border-left:4px solid #2563eb}";
+  h+=".section-tempo{border-left-color:#059669}.section-prod{border-left-color:#7c3aed}.section-notas{border-left-color:#dc2626}";
+  h+="table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}";
+  h+="th{background:#e2e8f0;padding:5px 8px;text-align:left}td{padding:4px 8px;border-bottom:1px solid #e2e8f0}";
+  h+=".kpi{display:inline-block;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:8px 16px;margin:4px;text-align:center}";
+  h+=".kpi .v{font-size:20px;font-weight:700}.kpi .l{font-size:9px;color:#6b7280;text-transform:uppercase}";
+  h+="@media print{.section{break-inside:avoid}}</style></head><body>";
+  h+="<h1>Snapshots Congelados - Dashboard KPI RA</h1>";
+  h+="<p style='color:#6b7280'>Exportado em: "+new Date().toLocaleDateString("pt-BR")+" "+new Date().toLocaleTimeString("pt-BR")+"</p>";
+  for(var i=0;i<FROZEN.length;i++){
+    var s=FROZEN[i];
+    h+="<h2>"+escHtml(s.lb)+" ("+s.dt+")</h2>";
+    h+="<div class='section'><h3 style='margin-top:0;color:#2563eb'>Analise RA</h3>";
+    h+="<div class='kpi'><div class='l'>Total</div><div class='v'>"+s.total+"</div></div>";
+    h+="<div class='kpi'><div class='l'>Respondidos</div><div class='v'>"+s.resp+"</div></div>";
+    h+="<div class='kpi'><div class='l'>Sem Resp.</div><div class='v' style='color:#dc2626'>"+s.sem+"</div></div>";
+    h+="<div class='kpi'><div class='l'>Nota Media</div><div class='v'>"+s.avgN+"</div></div>";
+    h+="<div class='kpi'><div class='l'>NPS</div><div class='v'>"+s.nps+"</div></div>";
+    h+="<p><b>NPS:</b> Promotores(9-10): <b style='color:#059669'>"+s.prom+"</b> | Neutros(7-8): <b style='color:#d97706'>"+s.neut+"</b> | Detratores(0-6): <b style='color:#dc2626'>"+s.det+"</b></p>";
+    h+="<p><b>Resolvido:</b> Sim="+s.rS+" | Nao="+s.rN+" | <b>Voltaria:</b> Sim="+s.vS+" | Nao="+s.vN+"</p>";
+    if(s.sra){h+="<p><b>Status RA:</b><br>"+escHtml(s.sra).replace(/\n/g,"<br>")+"</p>";}
+    if(s.mot){h+="<p><b>Top Motivos:</b><br>"+escHtml(s.mot).replace(/\n/g,"<br>")+"</p>";}
+    h+="</div>";
+    h+="<div class='section section-tempo'><h3 style='margin-top:0;color:#059669'>Tempo de Resposta</h3>";
+    h+="<div class='kpi'><div class='l'>Media(d)</div><div class='v'>"+s.avgD+"</div></div>";
+    h+="<div class='kpi'><div class='l'>Mesmo Dia</div><div class='v' style='color:#059669'>"+s.d0+"</div></div>";
+    h+="<div class='kpi'><div class='l'>1 Dia</div><div class='v'>"+s.d1+"</div></div>";
+    h+="<div class='kpi'><div class='l'>2 Dias</div><div class='v'>"+s.d2+"</div></div>";
+    h+="<div class='kpi'><div class='l'>3 Dias</div><div class='v'>"+s.d3+"</div></div>";
+    h+="<div class='kpi'><div class='l'>&gt;3 Dias</div><div class='v' style='color:#dc2626'>"+s.gt3+"</div></div>";
+    h+="</div>";
+    if(s.ag&&s.ag.length){
+      h+="<div class='section section-prod'><h3 style='margin-top:0;color:#7c3aed'>Produtividade</h3>";
+      h+="<table><tr><th>Agente</th><th>Total</th><th>Resp.</th><th>Taxa</th><th>MsmDia</th><th>&gt;3d</th><th>Pend.</th><th>Nota</th></tr>";
+      for(var j=0;j<s.ag.length;j++){var a=s.ag[j];h+="<tr><td><b>"+escHtml(a.nm)+"</b></td><td>"+a.t+"</td><td>"+a.r+"</td><td>"+a.taxa+"%</td><td style='color:#059669'>"+a.d0+"</td><td style='color:#dc2626'>"+(a.gt3||0)+"</td><td style='color:#d97706'>"+(a.pend||0)+"</td><td><b>"+a.nota+"</b></td></tr>";}
+      h+="</table></div>";
+    }
+    if(s.notaMot&&s.notaMot.length){
+      h+="<div class='section section-notas'><h3 style='margin-top:0;color:#dc2626'>Analise de Notas (pior para melhor)</h3>";
+      h+="<table><tr><th>Motivo</th><th>Nota Media</th><th>Avaliados</th><th>Diagnostico</th></tr>";
+      for(var nm=0;nm<s.notaMot.length;nm++){var it=s.notaMot[nm];var dg=parseFloat(it.avg)<5?"Critico":parseFloat(it.avg)<7?"Baixo":"OK";var dc=parseFloat(it.avg)<5?"#dc2626":parseFloat(it.avg)<7?"#d97706":"#059669";h+="<tr><td>"+escHtml(it.mot)+"</td><td style='color:"+dc+";font-weight:700'>"+it.avg+"</td><td>"+it.cnt+"</td><td style='color:"+dc+"'>"+dg+"</td></tr>";}
+      h+="</table></div>";
+    }
+    h+="<hr style='margin:24px 0;border-color:#e2e8f0'>";
+  }
+  h+="</body></html>";
+  return h;
+}
+
+function exportFrozenHTML(){
+  if(!FROZEN.length){alert("Nenhum snapshot congelado.");return;}
+  var h=buildFrozenHTMLContent();
+  var blob=new Blob([h],{type:"text/html;charset=utf-8"});
+  var url=URL.createObjectURL(blob);var a=document.createElement("a");
+  a.href=url;a.download="snapshots_congelados.html";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+}
+
+function exportFrozenCSV(){
+  if(!FROZEN.length){alert("Nenhum snapshot congelado.");return;}
+  var sep=";";
+  var csv="\xEFLabel"+sep+"Data"+sep+"Total"+sep+"Respondidos"+sep+"SemResp"+sep+"MesmoDia"+sep+"1Dia"+sep+"2Dias"+sep+"3Dias"+sep+"Gt3Dias"+sep+"MediaDias"+sep+"NotaMedia"+sep+"NPS"+sep+"Promotores"+sep+"Neutros"+sep+"Detratores"+sep+"ResolvSim"+sep+"ResolvNao"+sep+"VoltSim"+sep+"VoltNao\n";
+  for(var i=0;i<FROZEN.length;i++){
+    var s=FROZEN[i];
+    csv+=s.lb+sep+s.dt+sep+s.total+sep+s.resp+sep+s.sem+sep+s.d0+sep+s.d1+sep+s.d2+sep+s.d3+sep+s.gt3+sep+s.avgD+sep+s.avgN+sep+s.nps+sep+s.prom+sep+s.neut+sep+s.det+sep+s.rS+sep+s.rN+sep+s.vS+sep+s.vN+"\n";
+  }
+  // Add agent detail rows
+  csv+="\n\nDetalhamento por Agente\n";
+  csv+="Snapshot"+sep+"Agente"+sep+"Total"+sep+"Resp"+sep+"Taxa%"+sep+"MesmoDia"+sep+"Gt3Dias"+sep+"Pendentes"+sep+"Nota\n";
+  for(var j=0;j<FROZEN.length;j++){
+    var s2=FROZEN[j];
+    if(s2.ag&&s2.ag.length){
+      for(var k=0;k<s2.ag.length;k++){
+        var ag=s2.ag[k];
+        csv+=s2.lb+sep+ag.nm+sep+ag.t+sep+ag.r+sep+ag.taxa+"%"+sep+ag.d0+sep+(ag.gt3||0)+sep+(ag.pend||0)+sep+ag.nota+"\n";
+      }
+    }
+  }
+  // Add notas por motivo
+  csv+="\n\nNotas por Motivo\n";
+  csv+="Snapshot"+sep+"Motivo"+sep+"NotaMedia"+sep+"Avaliados"+sep+"Diagnostico\n";
+  for(var m=0;m<FROZEN.length;m++){
+    var s3=FROZEN[m];
+    if(s3.notaMot&&s3.notaMot.length){
+      for(var n=0;n<s3.notaMot.length;n++){
+        var it=s3.notaMot[n];
+        var dg=parseFloat(it.avg)<5?"Critico":parseFloat(it.avg)<7?"Baixo":"OK";
+        csv+=s3.lb+sep+it.mot+sep+it.avg+sep+it.cnt+sep+dg+"\n";
+      }
+    }
+  }
+  var blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  var url=URL.createObjectURL(blob);var a=document.createElement("a");
+  a.href=url;a.download="snapshots_congelados.csv";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+}
+
+function exportFrozenPDF(){
+  if(!FROZEN.length){alert("Nenhum snapshot congelado.");return;}
+  var h=buildFrozenHTMLContent();
+  var w=window.open("","_blank");
+  w.document.write(h);
+  w.document.close();
+  setTimeout(function(){w.print();},500);
+}
+
+
+/* ===== CARGA AO VIVO DA PLANILHA (Google Sheets publicado como CSV) ===== */
+// Cole aqui o link gerado em: Arquivo > Compartilhar > Publicar na Web > aba BASE > CSV.
+// Formato: https://docs.google.com/spreadsheets/d/e/2PACX-.../pub?gid=0&single=true&output=csv
+var SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRNP-k9KSJbv4xwf3CeLzMCPeOOuT2p1Inz2P_WebuKW2hK8bVv795nhH3LPDa-tGAJ4fd1c7pPdQkk/pub?gid=87252591&single=true&output=csv";
+var EMBEDDED_SNAPSHOT = "07/10/2026 (base V9 · 1.756 registros)";
+var LIVE_REFRESH_MIN = 10;
+var _liveTimer = null;
+
+function liveUrl(){
+  var u = SHEET_CSV_URL;
+  if(!u){ try{ u = localStorage.getItem("kra_sheet_csv_url") || ""; }catch(e){} }
+  return String(u||"").trim();
+}
+function setStatus(html){ var s=el("data-status"); if(s) s.innerHTML=html; }
+function snapshotStatus(extra){
+  setStatus("v9 | Base embutida de "+EMBEDDED_SNAPSHOT+(extra?" · "+extra:""));
+}
+function reloadLive(manual){
+  var url = liveUrl();
+  if(!url){
+    if(!manual){ snapshotStatus("link da planilha não configurado"); return; }
+    var typed = prompt("Cole o link CSV publicado da planilha (Arquivo > Compartilhar > Publicar na Web > CSV).\nPara valer para toda a equipe, cole no início do script em SHEET_CSV_URL.");
+    if(!typed) return;
+    try{ localStorage.setItem("kra_sheet_csv_url", typed.trim()); }catch(e){}
+    url = typed.trim();
+  }
+  setStatus("v9 | 🔄 Lendo a planilha…");
+  var sep = url.indexOf("?")>=0 ? "&" : "?";
+  fetch(url + sep + "_t=" + Date.now(), {cache:"no-store"})
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+    .then(function(text){
+      text = String(text||"").replace(/^\uFEFF/,"");
+      if(text.indexOf("Data Reclamação")<0 || text.indexOf("Sentimento Consideração")<0) throw new Error("Conteúdo não parece a aba BASE (confira se o link publicado é CSV da aba BASE)");
+      var before = DATA_ORIGINAL.length;
+      processUpload(text);
+      if(DATA_ORIGINAL.length<2) throw new Error("Nenhum registro lido");
+      filtered = DATA_ORIGINAL.slice();
+      renderActiveTab();
+      var t = new Date();
+      window._liveStamp=("0"+t.getDate()).slice(-2)+"/"+("0"+(t.getMonth()+1)).slice(-2)+"/"+t.getFullYear()+" "+("0"+t.getHours()).slice(-2)+":"+("0"+t.getMinutes()).slice(-2)+" (planilha ao vivo)";
+      setStatus("v9 | 🟢 Planilha ao vivo · "+fmtNum(DATA_ORIGINAL.length)+" registros · lida às "+String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0"));
+      if(!_liveTimer && LIVE_REFRESH_MIN>0) _liveTimer = setInterval(function(){reloadLive(false);}, LIVE_REFRESH_MIN*60000);
+    })
+    .catch(function(err){
+      console.error(err);
+      snapshotStatus("🟠 não foi possível ler a planilha ("+escHtml(err.message||err)+")");
+      if(manual) alert("Não foi possível ler a planilha:\n"+(err.message||err)+"\n\nConfira se a aba BASE está publicada na web como CSV e se o link está correto. Enquanto isso o dashboard usa a base embutida.");
+    });
+}
+
+function exportDashHTML(){
+  if(!window._liveStamp&&!confirm("A planilha ainda não foi lida ao vivo nesta sessão. O HTML sairá com a base embutida atual. Continuar?"))return;
+  var clone=document.documentElement.cloneNode(true);
+  ["frozen-area","filters-bar","tab-bar","modal-content","data-status"].forEach(function(id){var n=clone.querySelector("#"+id);if(n)n.innerHTML="";});
+  clone.querySelectorAll(".tab-panel").forEach(function(p){p.innerHTML="";p.removeAttribute("data-rendered");});
+  var mo=clone.querySelector("#modal-overlay");if(mo)mo.className="modal-overlay";
+  var html="<!DOCTYPE html>\n"+clone.outerHTML;
+  var fj=JSON.stringify(FROZEN.map(function(s){var c=Object.assign({},s);delete c._emb;return c;})).replace(/<\//g,"<\\/");
+  var dj=JSON.stringify(DATA_ORIGINAL).replace(/<\//g,"<\\/");
+  html=html.replace(/var FROZEN_EMBEDDED = \[[\s\S]*?\]; \/\*END_FROZEN\*\//,function(){return "var FROZEN_EMBEDDED = "+fj+"; /*END_FROZEN*/";});
+  html=html.replace(/var DATA=\[[\s\S]*?\];(\s*)DATA\.forEach\(fixPositiveWithNegativeKeyword\)/,function(m,ws){return "var DATA="+dj+";"+ws+"DATA.forEach(fixPositiveWithNegativeKeyword)";});
+  if(window._liveStamp)html=html.replace(/var EMBEDDED_SNAPSHOT = "[^"]*";/,function(){return 'var EMBEDDED_SNAPSHOT = "'+window._liveStamp+'";';});
+  downloadBlob(html,"Dashboard_KPI_RA_v9_ATENDIMENTO.html","text/html;charset=utf-8");
+}
+
+init();
+snapshotStatus();
+reloadLive(false);
+
+</script>
+
+
+</body></html>
